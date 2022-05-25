@@ -19,6 +19,10 @@ import java.nio.file.Files
 import java.nio.file.Paths
 
 fun main(args: Array<String>) {
+    launch<TuberApp>(args)
+}
+
+fun main0() {
     val downloader = YoutubeDownloader()
     val config: Config = downloader.getConfig()
     config.setMaxRetries(0)
