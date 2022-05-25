@@ -3,6 +3,7 @@ package io.averkhoglyad.tuber
 import io.averkhoglyad.tuber.layout.MainLayout
 import javafx.scene.input.KeyCode
 import javafx.scene.input.KeyCodeCombination
+import javafx.stage.Stage
 import org.apache.logging.log4j.jul.Log4jBridgeHandler
 import tornadofx.App
 import tornadofx.FX
