@@ -1,7 +1,6 @@
 package io.averkhoglyad.tuber.view
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
-import io.averkhoglyad.tuber.fragment.DownloadRequestEvent
 import io.averkhoglyad.tuber.fragment.VideoCardFragment
 import tornadofx.View
 import tornadofx.listview
@@ -17,6 +16,7 @@ class VideosListView : View() {
     }
 
     fun addVideo(video: VideoInfo) {
-        videos.add(0, video)
+        videos.removeIf { it.details().videoId() == video.details().videoId() }
+        videos.add(video)
     }
 }

@@ -2,39 +2,73 @@ package io.averkhoglyad.tuber.fragment
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
+import io.averkhoglyad.tuber.util.CallbackFn
+import io.averkhoglyad.tuber.util.fontawesome
 import io.averkhoglyad.tuber.util.noop1
+import javafx.geometry.Insets
+import javafx.geometry.Pos
+import javafx.scene.text.FontWeight
+import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
-
-typealias CallbackFn = (VideoInfo) -> Unit
 
 class VideoCardFragment : ListCellFragment<VideoInfo>() {
 
-    private var onDownloadFn: CallbackFn = noop1
+    private var onDownloadFn: CallbackFn<VideoInfo> = noop1
 
     override val root = vbox {
-        hbox {
-            imageview(itemProperty.select { it.details().thumbnails().firstOrNull().toProperty() }) {
-                prefWidth(100.0)
-                maxHeight(100.0)
+        borderpane {
+            left {
+                imageview(itemProperty.select { it.details().thumbnails().firstOrNull().toProperty() }) {
+                    prefWidth(250.0)
+                    maxHeight(250.0)
+                }
             }
-            vbox {
-                label(itemProperty.select { it.details().title().toProperty() })
-                label(itemProperty.select { it.details().author().toProperty() })
-                label(itemProperty.select { "${it.details().lengthSeconds()} sec".toProperty() })
+            center {
+                vbox(5.0) {
+                    padding = Insets(5.0, 10.0, 5.0, 10.0)
+                    label(itemProperty.select { it.details().title().toProperty() }) {
+                        style {
+                            fontWeight = FontWeight.EXTRA_BOLD
+                        }
+                    }
+                    hbox {
+                        label(itemProperty.select { it.details().author().toProperty() }) {
+                            style {
+                                textFill = c("006caa")
+                            }
+                        }
+                        spacer()
+                        label(itemProperty.select { parseDuration(it.details().lengthSeconds()).toProperty() }) {
+                            style {
+                                textFill = c("#a94442")
+                            }
+                        }
+                    }
+                }
             }
-        }
-        hbox {
-            button("Download") {
-                disableWhen(itemProperty.isNull)
-                action {
-                    fire(DownloadRequestEvent(item, item.bestVideoWithAudioFormat()))
-                    onDownloadFn(item)
+            right {
+                vbox(5.0, Pos.CENTER) {
+                    button {
+                        graphic = fontawesome(FontAwesome.Glyph.DOWNLOAD)
+                        disableWhen(itemProperty.isNull)
+                        action {
+                            fire(DownloadRequestEvent(item, item.bestVideoWithAudioFormat()))
+                            onDownloadFn(item)
+                        }
+                    }
                 }
             }
         }
     }
 
-    fun onDownload(fn: CallbackFn) {
+    private fun parseDuration(seconds: Int): String {
+        val hours = seconds / 3600
+        val minutes = seconds % 3600 / 60
+        val seconds = seconds % 60
+        return "%02d:%02d:%02d".format(hours, minutes, seconds)
+    }
+
+    fun onDownload(fn: CallbackFn<VideoInfo>) {
         this.onDownloadFn = fn
     }
 }

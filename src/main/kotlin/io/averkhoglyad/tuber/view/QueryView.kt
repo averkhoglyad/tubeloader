@@ -1,14 +1,13 @@
 package io.averkhoglyad.tuber.view
 
-import com.github.kiulian.downloader.model.videos.VideoInfo
-import com.github.kiulian.downloader.model.videos.formats.VideoFormat
+import io.averkhoglyad.tuber.util.CallbackFn
+import io.averkhoglyad.tuber.util.fontawesome
 import io.averkhoglyad.tuber.util.noop1
 import javafx.beans.property.SimpleBooleanProperty
 import javafx.beans.property.SimpleStringProperty
 import javafx.scene.input.KeyCode
+import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
-
-typealias CallbackFn = (String) -> Unit
 
 class QueryView : View() {
 
@@ -17,7 +16,7 @@ class QueryView : View() {
     private val searchingProperty = SimpleBooleanProperty()
     var searching by searchingProperty
 
-    private var onSearchFn: CallbackFn = noop1
+    private var onSearchFn: CallbackFn<String> = noop1
 
     override val root = vbox {
         hbox(5.0) {
@@ -34,7 +33,8 @@ class QueryView : View() {
                     }
                 }
             }
-            button(">") {
+            button {
+                graphic = fontawesome(FontAwesome.Glyph.LOCATION_ARROW)
                 disableWhen(searchField.isEmpty)
                 prefWidth = 25.0
                 action {
@@ -55,7 +55,7 @@ class QueryView : View() {
         searchField.set("")
     }
 
-    fun onSearch(fn: CallbackFn) {
+    fun onSearch(fn: CallbackFn<String>) {
         onSearchFn = fn
     }
 }

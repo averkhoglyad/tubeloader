@@ -1,10 +1,8 @@
 package io.averkhoglyad.tuber.view
 
-import com.github.kiulian.downloader.model.videos.VideoInfo
 import io.averkhoglyad.tuber.data.DownloadTask
 import io.averkhoglyad.tuber.util.onChange
 import javafx.beans.binding.DoubleExpression
-import javafx.beans.property.DoubleProperty
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.consumeEach

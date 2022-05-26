@@ -1,5 +1,7 @@
 package io.averkhoglyad.tuber.util
 
+typealias CallbackFn<E> = (E) -> Unit
+
 val noop: () -> Unit = {}
 val noop1: (Any?) -> Unit = {_1 -> }
 val noop2: (_1: Any?, _2: Any?) -> Unit = {_1, _2 -> }

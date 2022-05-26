@@ -7,6 +7,8 @@ import javafx.scene.control.TabPane
 import javafx.stage.Stage
 import javafx.stage.WindowEvent
 import org.controlsfx.control.StatusBar
+import org.controlsfx.glyphfont.FontAwesome
+import org.controlsfx.glyphfont.Glyph
 import tornadofx.*
 
 fun Stage.consumeCloseRequest(op: (Stage) -> Unit) {
@@ -20,12 +22,7 @@ fun Stage.requestClose() {
     fireEvent(WindowEvent(this, WindowEvent.WINDOW_CLOSE_REQUEST))
 }
 
-fun TabPane.tab(component: UIComponent, op: Tab.() -> Unit = {}) = tab(text = component.title) {
-    textProperty().bind(component.titleProperty)
-    graphicProperty().bind(component.iconProperty)
-    this += component
-    op()
-}
+fun fontawesome(icon: FontAwesome.Glyph, op: Glyph.() -> Unit = {}) = Glyph("FontAwesome", icon).also(op)
 
 fun StatusBar.bindStatus(text: String, status: ReadOnlyDoubleProperty) {
     this.text = text
