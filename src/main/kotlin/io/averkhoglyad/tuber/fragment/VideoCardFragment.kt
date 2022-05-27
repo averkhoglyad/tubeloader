@@ -10,9 +10,11 @@ import javafx.geometry.Pos
 import javafx.scene.text.FontWeight
 import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
+import java.util.*
 
 class VideoCardFragment : ListCellFragment<VideoInfo>() {
 
+    private val video by itemProperty
     private var onDownloadFn: CallbackFn<VideoInfo> = noop1
 
     override val root = vbox {
@@ -48,13 +50,20 @@ class VideoCardFragment : ListCellFragment<VideoInfo>() {
             }
             right {
                 vbox(5.0, Pos.CENTER) {
-                    button {
-                        graphic = fontawesome(FontAwesome.Glyph.DOWNLOAD)
+                    menubutton(graphic = fontawesome(FontAwesome.Glyph.DOWNLOAD)) {
                         disableWhen(itemProperty.isNull)
-                        action {
-                            fire(DownloadRequestEvent(item, item.bestVideoWithAudioFormat()))
-                            onDownloadFn(item)
-                        }
+                        itemProperty.select { it.videoWithAudioFormats().reversed().toProperty() }
+                            .onChange {
+                                this@menubutton.items.clear()
+                                it?.forEach { format ->
+                                        item("${format.extension().value().uppercase(Locale.getDefault())} ${format.qualityLabel()}") {
+                                            action {
+                                                fire(DownloadRequestEvent(item, item.bestVideoWithAudioFormat()))
+                                                onDownloadFn(item)
+                                            }
+                                        }
+                                    }
+                            }
                     }
                 }
             }

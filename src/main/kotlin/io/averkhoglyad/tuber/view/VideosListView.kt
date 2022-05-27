@@ -16,7 +16,11 @@ class VideosListView : View() {
     }
 
     fun addVideo(video: VideoInfo) {
-        videos.removeIf { it.details().videoId() == video.details().videoId() }
-        videos.add(video)
+        var indexOfVideo = videos.indexOfFirst { it.details().videoId() == video.details().videoId() }
+        if (indexOfVideo < 0) {
+            videos.add(video)
+            indexOfVideo = videos.lastIndex
+        }
+        root.scrollTo(indexOfVideo)
     }
 }
