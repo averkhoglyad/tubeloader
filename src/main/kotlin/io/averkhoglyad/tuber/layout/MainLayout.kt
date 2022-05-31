@@ -1,31 +1,24 @@
 package io.averkhoglyad.tuber.layout
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
+import com.github.kiulian.downloader.model.videos.formats.AudioFormat
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
 import io.averkhoglyad.tuber.controller.YoutubeVideoController
 import io.averkhoglyad.tuber.data.DownloadTask
-import io.averkhoglyad.tuber.fragment.DownloadRequestEvent
-import io.averkhoglyad.tuber.fragment.VideoCardFragment
+import io.averkhoglyad.tuber.fragment.DownloadRequest
 import io.averkhoglyad.tuber.util.consumeCloseRequest
 import io.averkhoglyad.tuber.util.log4j
-import io.averkhoglyad.tuber.util.onChange
 import io.averkhoglyad.tuber.view.DownloadsStatusView
 import io.averkhoglyad.tuber.view.QueryEvent
 import io.averkhoglyad.tuber.view.QueryView
 import io.averkhoglyad.tuber.view.VideosListView
-import javafx.beans.binding.DoubleExpression
-import javafx.beans.property.DoubleProperty
-import javafx.beans.property.SimpleDoubleProperty
 import javafx.stage.FileChooser
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.consumeEach
-import kotlinx.coroutines.channels.ticker
 import kotlinx.coroutines.javafx.JavaFx
 import tornadofx.*
-import tornadofx.controlsfx.statusbar
 import java.io.File
 import java.nio.file.Path
-import java.util.concurrent.atomic.AtomicInteger
 
 class MainLayout : View("Tuber - Youtube downloader") {
 
@@ -74,10 +67,9 @@ class MainLayout : View("Tuber - Youtube downloader") {
         subscribe<QueryEvent> {
             loadVideoByQuery(it.query)
         }
-
-        subscribe<DownloadRequestEvent> { (video, format) ->
-            selectFileToSave(format.extension().value())
-                ?.let { target -> downloadVideo(video, format, target) }
+        subscribe<DownloadRequest> { (video, videoFormat, audioFormat) ->
+            selectFileToSave(videoFormat.extension().value())
+                ?.let { target -> downloadVideo(target, video, videoFormat, audioFormat) }
         }
     }
 
@@ -112,13 +104,15 @@ class MainLayout : View("Tuber - Youtube downloader") {
         return file.toPath().parent.resolve(file.name + ".$ext")
     }
 
-    private fun downloadVideo(video: VideoInfo, format: VideoFormat, target: Path) {
+    private fun downloadVideo(target: Path, video: VideoInfo, videoFormat: VideoFormat, audioFormat: AudioFormat?) {
         val task = DownloadTask(video)
         statusView.addDownload(task)
-        val channel = controller.downloadVideo(format, target)
+        val channel = controller.downloadVideo(target, videoFormat, audioFormat)
         GlobalScope.launch(Dispatchers.JavaFx) {
             channel.consumeEach(task.progress::set)
-            channel.invokeOnClose { statusView.dropDownload(task) }
+            channel.invokeOnClose {
+                statusView.dropDownload(task)
+            }
         }
     }
 }

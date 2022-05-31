@@ -34,7 +34,7 @@ class QueryView : View() {
                 }
             }
             button {
-                graphic = fontawesome(FontAwesome.Glyph.LOCATION_ARROW)
+                graphic = fontawesome(FontAwesome.Glyph.SEARCH)
                 disableWhen(searchField.isEmpty)
                 prefWidth = 25.0
                 action {

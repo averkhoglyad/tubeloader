@@ -33,23 +33,31 @@ dependencyManagement {
 }
 
 dependencies {
+    // Kotlin
     implementation(kotlin("stdlib-jdk8"))
     implementation(kotlin("reflect"))
+
+    // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.6.1")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx:1.6.1")
 
+    // Video/Audio
     implementation("com.github.sealedtx:java-youtube-downloader:3.0.2")
+    implementation("ws.schild:jave-core:3.3.1")
+    implementation("ws.schild:jave-nativebin-win64:3.3.1")
 
+    // UI
     implementation("no.tornado:tornadofx:1.7.20")
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")
     implementation("org.controlsfx:controlsfx:11.1.0")
 
+    // Logging
     implementation("org.apache.logging.log4j:log4j-api")
     implementation("org.apache.logging.log4j:log4j-jul")
-
     runtimeOnly("org.apache.logging.log4j:log4j-core")
     runtimeOnly("org.apache.logging.log4j:log4j-slf4j-impl")
 
+    // Tests
     testImplementation(kotlin("test"))
 }
 

@@ -1,10 +1,11 @@
 package io.averkhoglyad.tuber.fragment
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
+import com.github.kiulian.downloader.model.videos.formats.AudioFormat
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
-import io.averkhoglyad.tuber.util.CallbackFn
+import com.github.kiulian.downloader.model.videos.formats.VideoWithAudioFormat
 import io.averkhoglyad.tuber.util.fontawesome
-import io.averkhoglyad.tuber.util.noop1
+import io.averkhoglyad.tuber.util.noop3
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.text.FontWeight
@@ -12,10 +13,11 @@ import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
 import java.util.*
 
+typealias CallbackFn = (video: VideoInfo, videoFormat: VideoFormat, audioFormat: AudioFormat?) -> Unit
+
 class VideoCardFragment : ListCellFragment<VideoInfo>() {
 
-    private val video by itemProperty
-    private var onDownloadFn: CallbackFn<VideoInfo> = noop1
+    private var onDownloadFn: CallbackFn = noop3
 
     override val root = vbox {
         borderpane {
@@ -52,14 +54,17 @@ class VideoCardFragment : ListCellFragment<VideoInfo>() {
                 vbox(5.0, Pos.CENTER) {
                     menubutton(graphic = fontawesome(FontAwesome.Glyph.DOWNLOAD)) {
                         disableWhen(itemProperty.isNull)
-                        itemProperty.select { it.videoWithAudioFormats().reversed().toProperty() }
-                            .onChange {
+                        itemProperty.select { it.toProperty() }
+                            .onChange { video ->
                                 this@menubutton.items.clear()
-                                it?.forEach { format ->
-                                        item("${format.extension().value().uppercase(Locale.getDefault())} ${format.qualityLabel()}") {
+                                if (video == null) {
+                                    return@onChange
+                                }
+                                detectSupportedFormats(video)
+                                    .forEach { format ->
+                                        item(formatLabel(format)) {
                                             action {
-                                                fire(DownloadRequestEvent(item, item.bestVideoWithAudioFormat()))
-                                                onDownloadFn(item)
+                                                requestDownload(format)
                                             }
                                         }
                                     }
@@ -77,9 +82,38 @@ class VideoCardFragment : ListCellFragment<VideoInfo>() {
         return "%02d:%02d:%02d".format(hours, minutes, seconds)
     }
 
-    fun onDownload(fn: CallbackFn<VideoInfo>) {
+    private fun formatLabel(format: VideoFormat): String {
+        return "${format.extension().value().uppercase(Locale.getDefault())} ${format.qualityLabel()}"
+    }
+
+    private fun detectSupportedFormats(video: VideoInfo): List<VideoFormat> {
+        val videoWithAudioFormats = video.videoWithAudioFormats()
+        val bestVideoWithAudioFormat = video.bestVideoWithAudioFormat()
+        val highQualityVideoWithoutAudioFormats = video.videoFormats()
+            .filter { it.extension().value() != "webm" }
+            .filter { it.videoQuality().ordinal > bestVideoWithAudioFormat.videoQuality().ordinal }
+        val formats = highQualityVideoWithoutAudioFormats + videoWithAudioFormats
+        return formats.sortedByDescending { it.videoQuality().ordinal }
+    }
+
+    private fun requestDownload(format: VideoFormat) {
+        val dwReq: DownloadRequest
+        if (format is VideoWithAudioFormat) {
+            dwReq = DownloadRequest(item, format)
+        } else {
+            dwReq = DownloadRequest(item, format, item.bestAudioFormat())
+        }
+        fire(dwReq)
+        onDownloadFn(dwReq.video, dwReq.videoFormat, dwReq.audioFormat)
+    }
+
+    fun onDownload(fn: CallbackFn) {
         this.onDownloadFn = fn
     }
 }
 
-data class DownloadRequestEvent(val video: VideoInfo, val format: VideoFormat) : FXEvent()
+data class DownloadRequest(val video: VideoInfo,
+                           val videoFormat: VideoFormat,
+                           val audioFormat: AudioFormat?) : FXEvent() {
+    constructor(video: VideoInfo, videoFormat: VideoWithAudioFormat) : this(video, videoFormat, null)
+}
