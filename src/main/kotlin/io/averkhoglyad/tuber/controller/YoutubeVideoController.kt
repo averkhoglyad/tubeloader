@@ -40,6 +40,9 @@ class YoutubeVideoController : Controller() {
         val url: URL = quite { URL(query) } ?: return null
         val host = url.host.replace("^www\\.".toRegex(), "")
         if (host.startsWith("youtube")) {
+            if (url.path.startsWith("/shorts/")) {
+                return url.path.substring("/shorts/".length)
+            }
             return (url.query ?: "").split("&")
                 .map { it.split("=", limit = 2) }
                 .firstOrNull { it[0] == "v" }
