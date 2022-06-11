@@ -1,9 +1,9 @@
-package io.averkhoglyad.tuber.view
+package io.averkhoglyad.tuber.layout.view
 
 import io.averkhoglyad.tuber.data.DownloadTask
 import io.averkhoglyad.tuber.util.onChange
 import javafx.beans.binding.DoubleExpression
-import javafx.collections.ObservableList
+import javafx.beans.property.SimpleIntegerProperty
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.channels.consumeEach
@@ -18,6 +18,7 @@ import java.util.concurrent.atomic.AtomicInteger
 class DownloadsStatusView : View() {
 
     private val downloads = observableListOf<DownloadTask>()
+    private val doneTasks = SimpleIntegerProperty()
 
     override val root = hbox {
         label {
@@ -36,9 +37,9 @@ class DownloadsStatusView : View() {
     }
 
     private fun StatusBar.handleProgress(list: List<DownloadTask>) {
+        this.progressProperty().unbind()
         if (list.isEmpty()) {
             this.text = ""
-            this.progressProperty().unbind()
             this.progress = 0.0
         } else {
             this.text = "Download"

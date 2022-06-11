@@ -1,23 +1,24 @@
-package io.averkhoglyad.tuber.fragment
+package io.averkhoglyad.tuber.layout.fragment
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
-import com.github.kiulian.downloader.model.videos.formats.AudioFormat
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
-import com.github.kiulian.downloader.model.videos.formats.VideoWithAudioFormat
+import io.averkhoglyad.tuber.util.CallbackFn
 import io.averkhoglyad.tuber.util.fontawesome
-import io.averkhoglyad.tuber.util.noop3
+import io.averkhoglyad.tuber.util.log4j
+import io.averkhoglyad.tuber.util.noCallback
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.text.FontWeight
+import org.apache.logging.log4j.util.Supplier
 import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
 import java.util.*
 
-typealias CallbackFn = (video: VideoInfo, videoFormat: VideoFormat, audioFormat: AudioFormat?) -> Unit
-
 class VideoCardFragment : ListCellFragment<VideoInfo>() {
 
-    private var onDownloadFn: CallbackFn = noop3
+    private val logger by log4j()
+
+    private var onDownloadFn: CallbackFn<DownloadRequest> = noCallback
 
     override val root = vbox {
         borderpane {
@@ -87,33 +88,41 @@ class VideoCardFragment : ListCellFragment<VideoInfo>() {
     }
 
     private fun detectSupportedFormats(video: VideoInfo): List<VideoFormat> {
-        val videoWithAudioFormats = video.videoWithAudioFormats()
+        logger.debug("Detecting supported formats for video: {}", video.details().videoId())
+
         val bestVideoWithAudioFormat = video.bestVideoWithAudioFormat()
+        val videoWithAudioFormats = video.videoWithAudioFormats()
+
+        logger.debug("-- detected best video with audio format {}", Supplier { bestVideoWithAudioFormat.asString() })
+        logger.debug("-- detected all video with audio formats: {}", Supplier { videoWithAudioFormats.asString() })
+
         val highQualityVideoWithoutAudioFormats = video.videoFormats()
-            .filter { it.extension().value() != "webm" }
             .filter { it.videoQuality().ordinal > bestVideoWithAudioFormat.videoQuality().ordinal }
-        val formats = highQualityVideoWithoutAudioFormats + videoWithAudioFormats
+
+        logger.debug("-- detected high quality without audio formats: {}", Supplier { highQualityVideoWithoutAudioFormats.asString() })
+
+        val formats = highQualityVideoWithoutAudioFormats.filter { it.extension().value() != "webm" } + videoWithAudioFormats
+
+        logger.debug("-- detected high quality without audio formats: {}", Supplier { highQualityVideoWithoutAudioFormats.asString() })
+
         return formats.sortedByDescending { it.videoQuality().ordinal }
     }
 
     private fun requestDownload(format: VideoFormat) {
-        val dwReq: DownloadRequest
-        if (format is VideoWithAudioFormat) {
-            dwReq = DownloadRequest(item, format)
-        } else {
-            dwReq = DownloadRequest(item, format, item.bestAudioFormat())
-        }
+        val dwReq = DownloadRequest(item, format)
         fire(dwReq)
-        onDownloadFn(dwReq.video, dwReq.videoFormat, dwReq.audioFormat)
+        onDownloadFn(dwReq)
     }
 
-    fun onDownload(fn: CallbackFn) {
+    fun onDownload(fn: CallbackFn<DownloadRequest>) {
         this.onDownloadFn = fn
     }
 }
 
-data class DownloadRequest(val video: VideoInfo,
-                           val videoFormat: VideoFormat,
-                           val audioFormat: AudioFormat?) : FXEvent() {
-    constructor(video: VideoInfo, videoFormat: VideoWithAudioFormat) : this(video, videoFormat, null)
-}
+private fun VideoFormat.asString() = "${qualityLabel()} ${extension().value()} ${mimeType()}"
+
+private fun List<VideoFormat>.asString() = this.takeUnless { it.isEmpty() }
+    ?.let { it.asSequence().map(VideoFormat::asString).joinToString("\n  - ", prefix = "\n  - ") }
+    ?: "<empty>"
+
+data class DownloadRequest(val video: VideoInfo, val videoFormat: VideoFormat) : FXEvent()

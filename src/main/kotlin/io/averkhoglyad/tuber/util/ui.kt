@@ -1,15 +1,11 @@
 package io.averkhoglyad.tuber.util
 
 import javafx.beans.property.ReadOnlyDoubleProperty
-import javafx.event.Event
-import javafx.scene.control.Tab
-import javafx.scene.control.TabPane
 import javafx.stage.Stage
 import javafx.stage.WindowEvent
 import org.controlsfx.control.StatusBar
 import org.controlsfx.glyphfont.FontAwesome
 import org.controlsfx.glyphfont.Glyph
-import tornadofx.*
 
 fun Stage.consumeCloseRequest(op: (Stage) -> Unit) {
     setOnCloseRequest {

@@ -1,8 +1,8 @@
-package io.averkhoglyad.tuber.view
+package io.averkhoglyad.tuber.layout.view
 
 import io.averkhoglyad.tuber.util.CallbackFn
 import io.averkhoglyad.tuber.util.fontawesome
-import io.averkhoglyad.tuber.util.noop1
+import io.averkhoglyad.tuber.util.noCallback
 import javafx.beans.property.SimpleBooleanProperty
 import javafx.beans.property.SimpleStringProperty
 import javafx.scene.input.KeyCode
@@ -16,7 +16,7 @@ class QueryView : View() {
     private val searchingProperty = SimpleBooleanProperty()
     var searching by searchingProperty
 
-    private var onSearchFn: CallbackFn<String> = noop1
+    private var onSearchFn: CallbackFn<String> = noCallback
 
     override val root = vbox {
         hbox(5.0) {

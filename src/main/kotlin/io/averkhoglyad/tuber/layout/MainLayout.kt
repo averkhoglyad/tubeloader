@@ -1,21 +1,17 @@
 package io.averkhoglyad.tuber.layout
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
-import com.github.kiulian.downloader.model.videos.formats.AudioFormat
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
 import io.averkhoglyad.tuber.controller.YoutubeVideoController
-import io.averkhoglyad.tuber.data.DownloadTask
-import io.averkhoglyad.tuber.fragment.DownloadRequest
+import io.averkhoglyad.tuber.layout.fragment.DownloadRequest
+import io.averkhoglyad.tuber.layout.view.*
 import io.averkhoglyad.tuber.util.consumeCloseRequest
 import io.averkhoglyad.tuber.util.log4j
-import io.averkhoglyad.tuber.view.DownloadsStatusView
-import io.averkhoglyad.tuber.view.QueryEvent
-import io.averkhoglyad.tuber.view.QueryView
-import io.averkhoglyad.tuber.view.VideosListView
 import javafx.stage.FileChooser
-import kotlinx.coroutines.*
-import kotlinx.coroutines.channels.consumeEach
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.javafx.JavaFx
+import kotlinx.coroutines.launch
 import tornadofx.*
 import java.io.File
 import java.nio.file.Path
@@ -29,7 +25,8 @@ class MainLayout : View("Tuber - Youtube downloader") {
     private val controller: YoutubeVideoController by inject()
 
     private val queryView by inject<QueryView>()
-    private val listView by inject<VideosListView>()
+    private val videosView by inject<VideosListView>()
+    private val tasksView by inject<TasksListView>()
     private val statusView by inject<DownloadsStatusView>()
 
     override val root = borderpane {
@@ -37,7 +34,11 @@ class MainLayout : View("Tuber - Youtube downloader") {
             this += queryView
         }
         center {
-            this += listView
+            splitpane {
+                this += videosView
+                this += tasksView
+//                tasksView.root.hide()
+            }
         }
         bottom {
             this += statusView
@@ -56,7 +57,7 @@ class MainLayout : View("Tuber - Youtube downloader") {
             width = 900.0
             height = 600.0
             consumeCloseRequest { window ->
-                confirm("Are you sure you want to close application?") {
+                confirm(title = "Confirm exit", header = "Are you sure you want to exit?") {
                     window.close()
                 }
             }
@@ -67,9 +68,9 @@ class MainLayout : View("Tuber - Youtube downloader") {
         subscribe<QueryEvent> {
             loadVideoByQuery(it.query)
         }
-        subscribe<DownloadRequest> { (video, videoFormat, audioFormat) ->
+        subscribe<DownloadRequest> { (video, videoFormat) ->
             selectFileToSave(videoFormat.extension().value())
-                ?.let { target -> downloadVideo(target, video, videoFormat, audioFormat) }
+                ?.let { target -> downloadVideo(target, video, videoFormat) }
         }
     }
 
@@ -81,8 +82,8 @@ class MainLayout : View("Tuber - Youtube downloader") {
                 if (videoId.isBlank()) {
                     information("No video ID")
                 } else {
-                    controller.loadVideoInfo(videoId).await()
-                        ?.let { listView.addVideo(it) } ?: warning("Video not found")
+                    controller.loadVideoInfoAsync(videoId).await()
+                        ?.let { videosView.addVideo(it) } ?: warning("Video not found")
                 }
             } finally {
                 queryView.searching = false
@@ -104,15 +105,9 @@ class MainLayout : View("Tuber - Youtube downloader") {
         return file.toPath().parent.resolve(file.name + ".$ext")
     }
 
-    private fun downloadVideo(target: Path, video: VideoInfo, videoFormat: VideoFormat, audioFormat: AudioFormat?) {
-        val task = DownloadTask(video)
+    private fun downloadVideo(target: Path, video: VideoInfo, videoFormat: VideoFormat) {
+        val task = controller.downloadVideo(target, video, videoFormat)
         statusView.addDownload(task)
-        val channel = controller.downloadVideo(target, videoFormat, audioFormat)
-        GlobalScope.launch(Dispatchers.JavaFx) {
-            channel.consumeEach(task.progress::set)
-            channel.invokeOnClose {
-                statusView.dropDownload(task)
-            }
-        }
+        tasksView.addTask(task)
     }
 }

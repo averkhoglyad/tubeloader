@@ -49,7 +49,7 @@ dependencies {
     // UI
     implementation("no.tornado:tornadofx:1.7.20")
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")
-    implementation("org.controlsfx:controlsfx:11.1.0")
+    implementation("org.controlsfx:controlsfx:11.1.1")
 
     // Logging
     implementation("org.apache.logging.log4j:log4j-api")
