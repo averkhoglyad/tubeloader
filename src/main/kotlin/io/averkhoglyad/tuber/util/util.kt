@@ -10,3 +10,15 @@ inline fun <reified T> quite(fn: () -> T?): T? {
         null
     }
 }
+
+fun String.toTitleCase(): String {
+    val sb: StringBuilder = StringBuilder(lowercase())
+    var newWord = true
+    sb.forEachIndexed { index, char ->
+        if (newWord) {
+            sb[index] = char.uppercaseChar()
+        }
+        newWord = char.isWhitespace()
+    }
+    return sb.toString()
+}

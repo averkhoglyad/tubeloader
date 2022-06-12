@@ -2,6 +2,7 @@ package io.averkhoglyad.tuber.layout.fragment
 
 import io.averkhoglyad.tuber.data.DownloadTask
 import io.averkhoglyad.tuber.data.TaskStatus
+import io.averkhoglyad.tuber.util.toTitleCase
 import javafx.beans.property.SimpleObjectProperty
 import javafx.geometry.Insets
 import javafx.geometry.Pos
@@ -19,6 +20,10 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
                     styleClass += "task-title"
                     textProperty().bind( itemProperty.select { it.videoInfo.details().title().toProperty() } )
                 }
+                label {
+                    styleClass += "task-message"
+                    textProperty().bind( itemProperty.select { it.targetPath.fileName.toString().toProperty() } )
+                }
                 progressbar {
                     styleClass += "task-progress-bar"
                     maxHeight = 8.0
@@ -31,7 +36,7 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
                 }
                 label {
                     styleClass += "task-message"
-                    textProperty().bind( itemProperty.select { it.targetPath.fileName.toString().toProperty() } )
+                    textProperty().bind( itemProperty.select { it.message } )
                 }
             }
         }
@@ -61,15 +66,9 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
     init {
         taskStatus.set(item?.status?.value)
         item?.let { taskStatus.bind(item.status) }
-        itemProperty.onChange {
+        itemProperty.onChange { item ->
             taskStatus.unbind()
-            it?.status?.let { taskStatus.bind(it) }
+            item?.status?.let { taskStatus.bind(it) }
         }
     }
-}
-
-private fun String.toTitleCase(): String {
-    val sb: StringBuilder = StringBuilder(lowercase())
-    sb.setCharAt(0, sb[0].uppercaseChar())
-    return sb.toString()
 }

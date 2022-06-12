@@ -1,6 +1,8 @@
 package io.averkhoglyad.tuber.util
 
 import javafx.beans.property.ReadOnlyDoubleProperty
+import javafx.scene.control.ListCell
+import javafx.scene.control.ListView
 import javafx.stage.Stage
 import javafx.stage.WindowEvent
 import org.controlsfx.control.StatusBar
@@ -29,4 +31,9 @@ fun StatusBar.clearStatus() {
     text = ""
     progressProperty().unbind()
     progress = 0.0
+}
+
+fun <E> ListView<E>.modifyCell(fn: (ListCell<E>) -> Unit) {
+    val originalCellFactory = cellFactory
+    setCellFactory { param -> originalCellFactory.call(param).also(fn) }
 }

@@ -13,8 +13,6 @@ import io.averkhoglyad.tuber.data.DownloadTask
 import io.averkhoglyad.tuber.data.TaskStatus
 import io.averkhoglyad.tuber.util.log4j
 import io.averkhoglyad.tuber.util.quite
-import javafx.beans.property.ReadOnlyDoubleWrapper
-import javafx.beans.property.ReadOnlyObjectWrapper
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
@@ -32,7 +30,11 @@ import java.net.URLDecoder
 import java.nio.charset.StandardCharsets
 import java.nio.file.Files
 import java.nio.file.Path
+import java.nio.file.StandardOpenOption
 import kotlin.coroutines.coroutineContext
+
+private const val audioAndVideoDownloadingProgressPart = 0.95
+private const val encodingProgressPart = 1 - audioAndVideoDownloadingProgressPart
 
 // TODO: Logic must be encapsulated in separated service and injected to controller
 class YoutubeVideoController : Controller() {
@@ -93,34 +95,32 @@ class YoutubeVideoController : Controller() {
     }
 
     private fun executeDownloadTask(target: Path, video: VideoInfo, block: suspend (Channel<Double>) -> Unit): DownloadTask {
-        val ch = Channel<Double>()
-        val status = ReadOnlyObjectWrapper(TaskStatus.IN_PROGRESS)
-        val progress = ReadOnlyDoubleWrapper()
-        GlobalScope.launch(Dispatchers.JavaFx) {
-            ch.consumeEach {
-                progress.set(it)
-            }
-        }
+        lateinit var task: DownloadTask
         val job = GlobalScope.launch(Dispatchers.IO) {
+            val progressCh = Channel<Double>()
+            GlobalScope.launch(Dispatchers.JavaFx) { progressCh.consumeEach { task.progress(it) } }
             try {
-                block(ch)
-                GlobalScope.launch(Dispatchers.JavaFx) { status.set(TaskStatus.DONE) }
+                block(progressCh)
+                logger.debug("Download is done")
+                GlobalScope.launch(Dispatchers.JavaFx) { task.status(TaskStatus.DONE) }
             } catch (e: CancellationException) {
                 logger.debug("Download is canceled")
-                GlobalScope.launch(Dispatchers.JavaFx) { status.set(TaskStatus.CANCELED) }
+                quite { Files.delete(target) }
+                GlobalScope.launch(Dispatchers.JavaFx) { task.status(TaskStatus.CANCELED) }
             } catch (e: Exception) {
-                logger.error("Error on downloading")
-                GlobalScope.launch(Dispatchers.JavaFx) { status.set(TaskStatus.FAILED) }
-                throw e // TODO:::
+                logger.error("Error on downloading", e)
+                quite { Files.delete(target) }
+                val message = "Error: ${e.message ?: "Error on downloading"}"
+                GlobalScope.launch(Dispatchers.JavaFx) { task.status(TaskStatus.FAILED, message) }
             } finally {
-                ch.close()
+                progressCh.close()
             }
         }
-        return DownloadTask(video, target, progress.readOnlyProperty, status.readOnlyProperty) {
+        task = DownloadTask(video, target) {
             logger.debug("Request to cancel download")
             job.cancel()
-            GlobalScope.launch(Dispatchers.JavaFx) { status.set(TaskStatus.CANCELING) }
         }
+        return task
     }
 
     private suspend fun doDownloadFromYoutube(target: Path, format: Format, progressCh: Channel<Double>) {
@@ -131,6 +131,7 @@ class YoutubeVideoController : Controller() {
                     override fun onFinished(file: Void?) {}
                     override fun onError(throwable: Throwable) {}
                     override fun onDownloading(progress: Int) {
+                        logger.debug("${target.fileName} downloading progress: ${progress}%")
                         ctx.ensureActive()
                         GlobalScope.launch(ctx) {
                             progressCh.takeUnless { it.isClosedForSend }
@@ -140,6 +141,7 @@ class YoutubeVideoController : Controller() {
                 })
             downloader.downloadVideoStream(req)
             progressCh.send(1.0)
+            logger.debug("${target.fileName} downloading is done")
         }
     }
 
@@ -147,7 +149,9 @@ class YoutubeVideoController : Controller() {
                                                  videoFmt: VideoFormat,
                                                  audioFmt: AudioFormat,
                                                  progressCh: Channel<Double>) {
-        if (!Files.exists(target)) { // To pin filename in the filesystem
+        if (Files.exists(target)) {
+            Files.write(target, byteArrayOf(), StandardOpenOption.TRUNCATE_EXISTING)
+        } else { // To pin filename in the filesystem
             Files.createFile(target)
         }
         val tmpAudioFile = Files.createTempFile(target.parent, "${target.fileName}.", ".a.tmp")
@@ -169,13 +173,13 @@ class YoutubeVideoController : Controller() {
                 launch {
                     audioCh.consumeEach {
                         progressAudio = it
-                        progressCh.send((progressAudio * audioPortion + progressVideo * videoPortion) * 0.95)
+                        progressCh.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
                     }
                 }
                 launch {
                     videoCh.consumeEach {
                         progressVideo = it
-                        progressCh.send((progressAudio * audioPortion + progressVideo * videoPortion) * 0.95)
+                        progressCh.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
                     }
                 }
 
@@ -185,11 +189,11 @@ class YoutubeVideoController : Controller() {
 
                 launch {
                     encodeCh.consumeEach {
-                        progressCh.send(0.95 + it * 0.1)
+                        progressCh.send(audioAndVideoDownloadingProgressPart + it * encodingProgressPart)
                     }
                 }
 
-                concatVideoAndAudioFiles(target, tmpAudioFile, tmpVideoFile, encodeCh)
+                mergeVideoAndAudioFiles(target, tmpAudioFile, tmpVideoFile, encodeCh)
                 progressCh.send(1.0)
             } finally {
                 quite { Files.delete(tmpAudioFile) }
@@ -201,7 +205,7 @@ class YoutubeVideoController : Controller() {
         }
     }
 
-    private suspend fun concatVideoAndAudioFiles(target: Path, tmpAudioFile: Path, tmpVideoFile: Path, progressCh: Channel<Double>) {
+    private suspend fun mergeVideoAndAudioFiles(target: Path, tmpAudioFile: Path, tmpVideoFile: Path, progressCh: Channel<Double>) {
         val multimediaObjects = listOf(MultimediaObject(tmpAudioFile.toFile()), MultimediaObject(tmpVideoFile.toFile()))
         val encodingAttributes = EncodingAttributes().apply {
             setAudioAttributes(AudioAttributes().apply {
@@ -218,10 +222,13 @@ class YoutubeVideoController : Controller() {
             }
 
             override fun progress(permil: Int) {
+                logger.debug("${target.fileName} encoding progress: ${permil / 10.0}%")
                 ctx.ensureActive()
-                GlobalScope.launch(ctx) {
-                    progressCh.takeUnless { it.isClosedForSend }
-                        ?.send(permil / 1000.0)
+                if (permil >= 0) {
+                    GlobalScope.launch(ctx) {
+                        progressCh.takeUnless { it.isClosedForSend }
+                            ?.send(permil / 1000.0)
+                    }
                 }
             }
 
@@ -229,7 +236,7 @@ class YoutubeVideoController : Controller() {
                 logger.warn("FFMPEG: $message")
             }
         }
-        Encoder()
-            .encode(multimediaObjects, target.toFile(), encodingAttributes, listener)
+        Encoder().encode(multimediaObjects, target.toFile(), encodingAttributes, listener)
+        logger.debug("${target.fileName} encoding is done")
     }
 }
