@@ -18,7 +18,7 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
             vbox(4.0) {
                 label {
                     styleClass += "task-title"
-                    textProperty().bind( itemProperty.select { it.videoInfo.details().title().toProperty() } )
+                    textProperty().bind( itemProperty.select { it.videoDetails.title.toProperty() } )
                 }
                 label {
                     styleClass += "task-message"
@@ -54,9 +54,7 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
                     tooltip = tooltip("Cancel Task")
                     removeWhen { taskStatus.isNotEqualTo(TaskStatus.IN_PROGRESS) }
                     action {
-                        if (item != null) {
-                            item.cancel()
-                        }
+                        item?.cancel()
                     }
                 }
             }

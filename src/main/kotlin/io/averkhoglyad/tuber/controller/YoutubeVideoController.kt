@@ -1,11 +1,9 @@
 package io.averkhoglyad.tuber.controller
 
-import com.github.kiulian.downloader.model.videos.VideoInfo
-import com.github.kiulian.downloader.model.videos.formats.AudioFormat
-import com.github.kiulian.downloader.model.videos.formats.VideoFormat
-import com.github.kiulian.downloader.model.videos.formats.VideoWithAudioFormat
+import io.averkhoglyad.tuber.data.DownloadOption
 import io.averkhoglyad.tuber.data.DownloadTask
 import io.averkhoglyad.tuber.data.TaskStatus
+import io.averkhoglyad.tuber.data.VideoDetails
 import io.averkhoglyad.tuber.service.YoutubeVideoService
 import io.averkhoglyad.tuber.util.log4j
 import io.averkhoglyad.tuber.util.quite
@@ -27,37 +25,21 @@ class YoutubeVideoController : Controller() {
         return service.parseVideoId(str)
     }
 
-    fun loadVideoInfoAsync(videoId: String): Deferred<VideoInfo?> {
+    fun loadVideoInfoAsync(videoId: String): Deferred<VideoDetails?> {
         return GlobalScope.async(Dispatchers.IO) {
             service.videoInfo(videoId)
         }
     }
 
-    fun downloadVideoAsync(target: Path, video: VideoInfo, format: VideoFormat): DownloadTask {
-        if (format is VideoWithAudioFormat) {
-            return downloadFromYoutube(target, video, format)
-        }
-        val audioFormat = video.bestAudioFormat()
-        if (audioFormat == null) {
-            return downloadFromYoutube(target, video, format)
-        } else {
-            return downloadVideoWithAudio(target, video, format, audioFormat)
-        }
-    }
-
-    private fun downloadFromYoutube(target: Path, video: VideoInfo, format: VideoFormat): DownloadTask {
+    fun downloadVideoAsync(target: Path, video: VideoDetails, op: DownloadOption): DownloadTask {
         return executeDownloadTask(target, video) { ch ->
-            service.downloadFromYoutube(target, format, ch)
+            service.downloadFromYoutube(target, op, ch)
         }
     }
 
-    private fun downloadVideoWithAudio(target: Path, video: VideoInfo, videoFmt: VideoFormat, audioFmt: AudioFormat): DownloadTask {
-        return executeDownloadTask(target, video) { ch ->
-            service.downloadVideoWithAudio(target, videoFmt, audioFmt, ch)
-        }
-    }
-
-    private fun executeDownloadTask(target: Path, video: VideoInfo, block: suspend (Channel<Double>) -> Unit): DownloadTask {
+    private fun executeDownloadTask(target: Path,
+                                    video: VideoDetails,
+                                    block: suspend (Channel<Double>) -> Unit): DownloadTask {
         lateinit var task: DownloadTask
         val job = GlobalScope.launch(Dispatchers.IO) {
             val progressCh = Channel<Double>()

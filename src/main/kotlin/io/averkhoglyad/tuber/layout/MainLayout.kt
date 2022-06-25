@@ -3,11 +3,14 @@ package io.averkhoglyad.tuber.layout
 import com.github.kiulian.downloader.model.videos.VideoInfo
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
 import io.averkhoglyad.tuber.controller.YoutubeVideoController
+import io.averkhoglyad.tuber.data.DownloadOption
+import io.averkhoglyad.tuber.data.VideoDetails
 import io.averkhoglyad.tuber.layout.fragment.DownloadRequest
 import io.averkhoglyad.tuber.layout.view.*
 import io.averkhoglyad.tuber.util.consumeCloseRequest
 import io.averkhoglyad.tuber.util.log4j
 import javafx.stage.FileChooser
+import javafx.stage.Window
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.javafx.JavaFx
@@ -67,9 +70,9 @@ class MainLayout : View("Tuber - Youtube downloader") {
         subscribe<QueryEvent> {
             loadVideoByQuery(it.query)
         }
-        subscribe<DownloadRequest> { (video, videoFormat) ->
-            selectFileToSave(videoFormat.extension().value())
-                ?.let { target -> downloadVideo(target, video, videoFormat) }
+        subscribe<DownloadRequest> { (video, option) ->
+            selectFileToSave(video.title.removeUnsupportedChars(), option.extension)
+                ?.let { target -> downloadVideo(target, video, option) }
         }
     }
 
@@ -81,7 +84,8 @@ class MainLayout : View("Tuber - Youtube downloader") {
                 if (videoId.isBlank()) {
                     information("No video ID")
                 } else {
-                    controller.loadVideoInfoAsync(videoId).await()
+                    controller.loadVideoInfoAsync(videoId)
+                        .await()
                         ?.let { videosView.addVideo(it) } ?: warning("Video not found")
                 }
             } finally {
@@ -90,13 +94,12 @@ class MainLayout : View("Tuber - Youtube downloader") {
         }
     }
 
-    private fun selectFileToSave(ext: String): Path? {
+    private fun selectFileToSave(initialFileName: String, ext: String): Path? {
         val filters = arrayOf(FileChooser.ExtensionFilter("${ext.uppercase()} file", "*.$ext"))
-        val file: File = chooseFile(owner = primaryStage,
-                                    mode = FileChooserMode.Save,
-                                    filters = filters, 
-                                    initialDirectory = initDirToImportFile)
-            .firstOrNull() ?: return null
+        val file: File = chooseFile(owner = primaryStage, mode = FileChooserMode.Save, filters = filters) {
+            this@chooseFile.initialDirectory = initDirToImportFile
+            this@chooseFile.initialFileName = initialFileName
+        }.firstOrNull() ?: return null
         initDirToImportFile = file.parentFile
         if (file.name.endsWith(".$ext")) {
             return file.toPath()
@@ -104,9 +107,13 @@ class MainLayout : View("Tuber - Youtube downloader") {
         return file.toPath().parent.resolve(file.name + ".$ext")
     }
 
-    private fun downloadVideo(target: Path, video: VideoInfo, videoFormat: VideoFormat) {
-        val task = controller.downloadVideoAsync(target, video, videoFormat)
+    private fun downloadVideo(target: Path, video: VideoDetails, option: DownloadOption) {
+        val task = controller.downloadVideoAsync(target, video, option)
         statusView.addDownload(task)
         tasksView.addTask(task)
     }
 }
+
+private fun String.removeUnsupportedChars() = this
+    .replace("[\\\\:\\*\\/\\?|<>]".toRegex(), " ")
+    .replace("\\s+".toRegex(), " ")

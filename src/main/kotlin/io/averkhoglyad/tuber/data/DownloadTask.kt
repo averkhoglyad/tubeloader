@@ -1,36 +1,34 @@
 package io.averkhoglyad.tuber.data
 
-import com.github.kiulian.downloader.model.videos.VideoInfo
 import io.averkhoglyad.tuber.util.CallbackFn
 import io.averkhoglyad.tuber.util.noCallback
 import javafx.beans.binding.ObjectExpression
 import javafx.beans.property.ReadOnlyBooleanProperty
 import javafx.beans.property.ReadOnlyBooleanWrapper
 import javafx.beans.property.ReadOnlyDoubleWrapper
+import javafx.beans.property.ReadOnlyObjectProperty
 import javafx.beans.property.ReadOnlyObjectWrapper
 import tornadofx.select
 import tornadofx.toProperty
 import java.nio.file.Path
-import java.util.*
 
-class DownloadTask(videoInfo: VideoInfo,
+class DownloadTask(videoDetails: VideoDetails,
                    targetPath: Path,
-                   cancelFn: CallbackFn<VideoInfo> = noCallback) {
+                   cancelFn: CallbackFn<VideoDetails> = noCallback) {
 
-    val id: UUID = UUID.randomUUID()
-    val videoInfo: VideoInfo = videoInfo
+    val videoDetails: VideoDetails = videoDetails
     val targetPath: Path = targetPath
 
     private val progressWrapper = ReadOnlyDoubleWrapper(-1.0)
     val progress = progressWrapper.readOnlyProperty
 
     private val statusWrapper = ReadOnlyObjectWrapper(TaskStatus.IN_PROGRESS)
-    val status = statusWrapper.readOnlyProperty
+    val status: ReadOnlyObjectProperty<TaskStatus> = statusWrapper.readOnlyProperty
 
     private val messageWrapper = ReadOnlyObjectWrapper<String?>(null)
-    val message = messageWrapper.readOnlyProperty
+    val message: ReadOnlyObjectProperty<String?> = messageWrapper.readOnlyProperty
 
-    private val cancelFn: CallbackFn<VideoInfo> = cancelFn
+    private val cancelFn: CallbackFn<VideoDetails> = cancelFn
 
     val isFinished = status.extractBooleanPropertyFromStatus { it.isFinished }
     val isSucceeded = status.extractBooleanPropertyFromStatus { it == TaskStatus.DONE }
@@ -52,7 +50,7 @@ class DownloadTask(videoInfo: VideoInfo,
 
     fun cancel() {
         statusWrapper.set(TaskStatus.CANCELING)
-        this.cancelFn(videoInfo)
+        this.cancelFn(videoDetails)
     }
 }
 

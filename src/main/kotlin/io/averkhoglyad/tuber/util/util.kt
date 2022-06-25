@@ -12,11 +12,13 @@ inline fun <reified T> quite(fn: () -> T?): T? {
 }
 
 fun String.toTitleCase(): String {
-    val sb: StringBuilder = StringBuilder(lowercase())
+    val sb: StringBuilder = StringBuilder(this.length)
     var newWord = true
-    sb.forEachIndexed { index, char ->
+    this.forEachIndexed { index, char ->
         if (newWord) {
-            sb[index] = char.uppercaseChar()
+            sb.append(char.uppercaseChar())
+        } else {
+            sb.append(char.lowercaseChar())
         }
         newWord = char.isWhitespace()
     }
