@@ -1,10 +1,8 @@
-package io.averkhoglyad.tuber.layout.view
+package io.averkhoglyad.tubeloader.layout.view
 
-import io.averkhoglyad.tuber.data.DownloadTask
-import io.averkhoglyad.tuber.layout.fragment.TaskLineFragment
-import io.averkhoglyad.tuber.util.modifyCell
-import javafx.scene.control.ListCell
-import javafx.scene.control.ListView
+import io.averkhoglyad.tubeloader.data.DownloadTask
+import io.averkhoglyad.tubeloader.layout.fragment.TaskLineFragment
+import io.averkhoglyad.tubeloader.util.modifyCell
 import org.controlsfx.control.TaskProgressView
 import tornadofx.*
 

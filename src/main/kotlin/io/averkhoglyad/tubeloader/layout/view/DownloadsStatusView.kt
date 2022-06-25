@@ -1,7 +1,7 @@
-package io.averkhoglyad.tuber.layout.view
+package io.averkhoglyad.tubeloader.layout.view
 
-import io.averkhoglyad.tuber.data.DownloadTask
-import io.averkhoglyad.tuber.util.onChange
+import io.averkhoglyad.tubeloader.data.DownloadTask
+import io.averkhoglyad.tubeloader.util.onChange
 import javafx.beans.binding.DoubleExpression
 import javafx.beans.property.SimpleIntegerProperty
 import kotlinx.coroutines.Dispatchers

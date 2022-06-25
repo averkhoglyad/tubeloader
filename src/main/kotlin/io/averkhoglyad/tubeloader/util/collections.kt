@@ -1,4 +1,4 @@
-package io.averkhoglyad.tuber.util
+package io.averkhoglyad.tubeloader.util
 
 import java.util.*
 

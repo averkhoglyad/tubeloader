@@ -1,8 +1,8 @@
-package io.averkhoglyad.tuber.layout.view
+package io.averkhoglyad.tubeloader.layout.view
 
-import io.averkhoglyad.tuber.util.CallbackFn
-import io.averkhoglyad.tuber.util.fontawesome
-import io.averkhoglyad.tuber.util.noCallback
+import io.averkhoglyad.tubeloader.util.CallbackFn
+import io.averkhoglyad.tubeloader.util.fontawesome
+import io.averkhoglyad.tubeloader.util.noCallback
 import javafx.beans.property.SimpleBooleanProperty
 import javafx.beans.property.SimpleStringProperty
 import javafx.scene.input.KeyCode

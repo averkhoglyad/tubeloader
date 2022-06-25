@@ -1,16 +1,13 @@
-package io.averkhoglyad.tuber.layout
+package io.averkhoglyad.tubeloader.layout
 
-import com.github.kiulian.downloader.model.videos.VideoInfo
-import com.github.kiulian.downloader.model.videos.formats.VideoFormat
-import io.averkhoglyad.tuber.controller.YoutubeVideoController
-import io.averkhoglyad.tuber.data.DownloadOption
-import io.averkhoglyad.tuber.data.VideoDetails
-import io.averkhoglyad.tuber.layout.fragment.DownloadRequest
-import io.averkhoglyad.tuber.layout.view.*
-import io.averkhoglyad.tuber.util.consumeCloseRequest
-import io.averkhoglyad.tuber.util.log4j
+import io.averkhoglyad.tubeloader.controller.YoutubeVideoController
+import io.averkhoglyad.tubeloader.data.DownloadOption
+import io.averkhoglyad.tubeloader.data.VideoDetails
+import io.averkhoglyad.tubeloader.layout.fragment.DownloadRequest
+import io.averkhoglyad.tubeloader.layout.view.*
+import io.averkhoglyad.tubeloader.util.consumeCloseRequest
+import io.averkhoglyad.tubeloader.util.log4j
 import javafx.stage.FileChooser
-import javafx.stage.Window
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
 import kotlinx.coroutines.javafx.JavaFx

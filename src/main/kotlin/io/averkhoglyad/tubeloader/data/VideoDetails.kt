@@ -1,4 +1,4 @@
-package io.averkhoglyad.tuber.data
+package io.averkhoglyad.tubeloader.data
 
 import kotlin.time.Duration
 

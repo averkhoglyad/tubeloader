@@ -1,7 +1,7 @@
-package io.averkhoglyad.tuber.data
+package io.averkhoglyad.tubeloader.data
 
-import io.averkhoglyad.tuber.util.CallbackFn
-import io.averkhoglyad.tuber.util.noCallback
+import io.averkhoglyad.tubeloader.util.CallbackFn
+import io.averkhoglyad.tubeloader.util.noCallback
 import javafx.beans.binding.ObjectExpression
 import javafx.beans.property.ReadOnlyBooleanProperty
 import javafx.beans.property.ReadOnlyBooleanWrapper

@@ -1,8 +1,8 @@
-package io.averkhoglyad.tuber.layout.fragment
+package io.averkhoglyad.tubeloader.layout.fragment
 
-import io.averkhoglyad.tuber.data.DownloadTask
-import io.averkhoglyad.tuber.data.TaskStatus
-import io.averkhoglyad.tuber.util.toTitleCase
+import io.averkhoglyad.tubeloader.data.DownloadTask
+import io.averkhoglyad.tubeloader.data.TaskStatus
+import io.averkhoglyad.tubeloader.util.toTitleCase
 import javafx.beans.property.SimpleObjectProperty
 import javafx.geometry.Insets
 import javafx.geometry.Pos

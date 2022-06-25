@@ -1,18 +1,15 @@
-package io.averkhoglyad.tuber.layout.fragment
+package io.averkhoglyad.tubeloader.layout.fragment
 
-import io.averkhoglyad.tuber.controller.YoutubeVideoController
-import io.averkhoglyad.tuber.data.DownloadOption
-import io.averkhoglyad.tuber.data.VideoDetails
-import io.averkhoglyad.tuber.util.CallbackFn
-import io.averkhoglyad.tuber.util.fontawesome
-import io.averkhoglyad.tuber.util.log4j
-import io.averkhoglyad.tuber.util.noCallback
+import io.averkhoglyad.tubeloader.data.DownloadOption
+import io.averkhoglyad.tubeloader.data.VideoDetails
+import io.averkhoglyad.tubeloader.util.CallbackFn
+import io.averkhoglyad.tubeloader.util.fontawesome
+import io.averkhoglyad.tubeloader.util.noCallback
 import javafx.geometry.Insets
 import javafx.geometry.Pos
 import javafx.scene.text.FontWeight
 import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
-import java.util.*
 import kotlin.time.Duration
 
 class VideoCardFragment : ListCellFragment<VideoDetails>() {

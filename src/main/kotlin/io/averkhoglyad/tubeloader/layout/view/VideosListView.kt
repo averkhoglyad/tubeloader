@@ -1,8 +1,7 @@
-package io.averkhoglyad.tuber.layout.view
+package io.averkhoglyad.tubeloader.layout.view
 
-import com.github.kiulian.downloader.model.videos.VideoInfo
-import io.averkhoglyad.tuber.data.VideoDetails
-import io.averkhoglyad.tuber.layout.fragment.VideoCardFragment
+import io.averkhoglyad.tubeloader.data.VideoDetails
+import io.averkhoglyad.tubeloader.layout.fragment.VideoCardFragment
 import tornadofx.View
 import tornadofx.label
 import tornadofx.listview

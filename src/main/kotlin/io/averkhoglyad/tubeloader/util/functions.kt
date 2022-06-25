@@ -1,4 +1,4 @@
-package io.averkhoglyad.tuber.util
+package io.averkhoglyad.tubeloader.util
 
 val noop0: () -> Unit = {}
 val noop1: (Any?) -> Unit = { _ -> }

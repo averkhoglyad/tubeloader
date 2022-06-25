@@ -1,12 +1,12 @@
-package io.averkhoglyad.tuber.controller
+package io.averkhoglyad.tubeloader.controller
 
-import io.averkhoglyad.tuber.data.DownloadOption
-import io.averkhoglyad.tuber.data.DownloadTask
-import io.averkhoglyad.tuber.data.TaskStatus
-import io.averkhoglyad.tuber.data.VideoDetails
-import io.averkhoglyad.tuber.service.YoutubeVideoService
-import io.averkhoglyad.tuber.util.log4j
-import io.averkhoglyad.tuber.util.quite
+import io.averkhoglyad.tubeloader.data.DownloadOption
+import io.averkhoglyad.tubeloader.data.DownloadTask
+import io.averkhoglyad.tubeloader.data.TaskStatus
+import io.averkhoglyad.tubeloader.data.VideoDetails
+import io.averkhoglyad.tubeloader.service.YoutubeVideoService
+import io.averkhoglyad.tubeloader.util.log4j
+import io.averkhoglyad.tubeloader.util.quite
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach

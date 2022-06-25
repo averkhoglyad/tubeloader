@@ -1,4 +1,4 @@
-package io.averkhoglyad.tuber.util
+package io.averkhoglyad.tubeloader.util
 
 val logger by log4j("io.averkhoglyad.tuber.util")
 

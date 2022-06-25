@@ -1,4 +1,4 @@
-package io.averkhoglyad.tuber.service
+package io.averkhoglyad.tubeloader.service
 
 import com.github.kiulian.downloader.YoutubeDownloader
 import com.github.kiulian.downloader.downloader.YoutubeProgressCallback
@@ -11,10 +11,10 @@ import com.github.kiulian.downloader.model.videos.formats.Format
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
 import com.github.kiulian.downloader.model.videos.formats.VideoWithAudioFormat
 import com.github.kiulian.downloader.model.videos.quality.VideoQuality
-import io.averkhoglyad.tuber.data.DownloadOption
-import io.averkhoglyad.tuber.data.VideoDetails
-import io.averkhoglyad.tuber.util.log4j
-import io.averkhoglyad.tuber.util.quite
+import io.averkhoglyad.tubeloader.data.DownloadOption
+import io.averkhoglyad.tubeloader.data.VideoDetails
+import io.averkhoglyad.tubeloader.util.log4j
+import io.averkhoglyad.tubeloader.util.quite
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach

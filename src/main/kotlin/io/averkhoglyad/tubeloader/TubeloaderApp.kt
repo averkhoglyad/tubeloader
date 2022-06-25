@@ -1,10 +1,9 @@
-package io.averkhoglyad.tuber
+package io.averkhoglyad.tubeloader
 
 import com.github.kiulian.downloader.YoutubeDownloader
-import io.averkhoglyad.tuber.layout.MainLayout
-import io.averkhoglyad.tuber.service.YoutubeVideoService
-import io.averkhoglyad.tuber.util.PicoDIContainer
-import javafx.scene.image.Image
+import io.averkhoglyad.tubeloader.layout.MainLayout
+import io.averkhoglyad.tubeloader.service.YoutubeVideoService
+import io.averkhoglyad.tubeloader.util.PicoDIContainer
 import javafx.scene.input.KeyCode
 import javafx.scene.input.KeyCodeCombination
 import org.apache.logging.log4j.jul.Log4jBridgeHandler
@@ -14,10 +13,9 @@ import org.picocontainer.DefaultPicoContainer
 import tornadofx.App
 import tornadofx.DIContainer
 import tornadofx.FX
-import tornadofx.addStageIcon
 import java.awt.SplashScreen
 
-class TuberApp : App(MainLayout::class) {
+class TubeloaderApp : App(MainLayout::class) {
     init {
         Log4jBridgeHandler.install(true, ".", true)
         FX.dicontainer = createDIContainer()
