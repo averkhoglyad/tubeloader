@@ -2,6 +2,7 @@ package io.averkhoglyad.tuber.layout.fragment
 
 import com.github.kiulian.downloader.model.videos.VideoInfo
 import com.github.kiulian.downloader.model.videos.formats.VideoFormat
+import io.averkhoglyad.tuber.controller.YoutubeVideoController
 import io.averkhoglyad.tuber.util.CallbackFn
 import io.averkhoglyad.tuber.util.fontawesome
 import io.averkhoglyad.tuber.util.log4j
@@ -17,6 +18,8 @@ import java.util.*
 class VideoCardFragment : ListCellFragment<VideoInfo>() {
 
     private val logger by log4j()
+
+    private val controller by inject<YoutubeVideoController>()
 
     private var onDownloadFn: CallbackFn<DownloadRequest> = noCallback
 
@@ -101,7 +104,7 @@ class VideoCardFragment : ListCellFragment<VideoInfo>() {
 
         logger.debug("-- detected high quality without audio formats: {}", Supplier { highQualityVideoWithoutAudioFormats.asString() })
 
-        val formats = highQualityVideoWithoutAudioFormats.filter { it.extension().value() != "webm" } + videoWithAudioFormats
+        val formats = highQualityVideoWithoutAudioFormats/*.filter { it.extension().value() != "webm" }*/ + videoWithAudioFormats
 
         logger.debug("-- detected high quality without audio formats: {}", Supplier { highQualityVideoWithoutAudioFormats.asString() })
 

@@ -1,16 +1,16 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
-plugins {
-    kotlin("jvm") version "1.6.21"
-    id("org.openjfx.javafxplugin") version "0.0.10"
-    id("io.spring.dependency-management") version "1.0.1.RELEASE"
-    application
-}
-
 group = "io.averkhoglyad"
 version = "1.0-SNAPSHOT"
 
 val targetJvmVersion = JavaVersion.VERSION_17.toString()
+
+plugins {
+    kotlin("jvm") version "1.7.0"
+    id("org.openjfx.javafxplugin") version "0.0.13"
+    id("io.spring.dependency-management") version "1.0.1.RELEASE"
+    application
+}
 
 javafx {
     version = targetJvmVersion
@@ -29,6 +29,7 @@ repositories {
 dependencyManagement {
     imports {
         mavenBom("org.apache.logging.log4j:log4j-bom:2.17.2")
+        mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.3")
     }
 }
 
@@ -38,8 +39,8 @@ dependencies {
     implementation(kotlin("reflect"))
 
     // Coroutines
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8:1.6.1")
-    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx:1.6.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8")
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx")
 
     // Video/Audio
     implementation("com.github.sealedtx:java-youtube-downloader:3.0.2")
@@ -50,6 +51,9 @@ dependencies {
     implementation("no.tornado:tornadofx:1.7.20")
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")
     implementation("org.controlsfx:controlsfx:11.1.1")
+
+    // DI
+    implementation("org.picocontainer:picocontainer:2.15")
 
     // Logging
     implementation("org.apache.logging.log4j:log4j-api")

@@ -37,7 +37,6 @@ class MainLayout : View("Tuber - Youtube downloader") {
             splitpane {
                 this += videosView
                 this += tasksView
-//                tasksView.root.hide()
             }
         }
         bottom {
@@ -106,7 +105,7 @@ class MainLayout : View("Tuber - Youtube downloader") {
     }
 
     private fun downloadVideo(target: Path, video: VideoInfo, videoFormat: VideoFormat) {
-        val task = controller.downloadVideo(target, video, videoFormat)
+        val task = controller.downloadVideoAsync(target, video, videoFormat)
         statusView.addDownload(task)
         tasksView.addTask(task)
     }
