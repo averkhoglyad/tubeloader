@@ -7,6 +7,7 @@ import io.averkhoglyad.tubeloader.layout.fragment.DownloadRequest
 import io.averkhoglyad.tubeloader.layout.view.*
 import io.averkhoglyad.tubeloader.util.consumeCloseRequest
 import io.averkhoglyad.tubeloader.util.log4j
+import javafx.scene.image.Image
 import javafx.stage.FileChooser
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.GlobalScope
@@ -16,7 +17,7 @@ import tornadofx.*
 import java.io.File
 import java.nio.file.Path
 
-class MainLayout : View("Tuber - Youtube downloader") {
+class MainLayout : View("Tubeloader - Download videos from Youtube") {
 
     private val logger by log4j()
 

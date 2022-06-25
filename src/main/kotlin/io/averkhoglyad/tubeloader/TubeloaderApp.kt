@@ -4,6 +4,7 @@ import com.github.kiulian.downloader.YoutubeDownloader
 import io.averkhoglyad.tubeloader.layout.MainLayout
 import io.averkhoglyad.tubeloader.service.YoutubeVideoService
 import io.averkhoglyad.tubeloader.util.PicoDIContainer
+import javafx.scene.image.Image
 import javafx.scene.input.KeyCode
 import javafx.scene.input.KeyCodeCombination
 import org.apache.logging.log4j.jul.Log4jBridgeHandler
@@ -13,6 +14,7 @@ import org.picocontainer.DefaultPicoContainer
 import tornadofx.App
 import tornadofx.DIContainer
 import tornadofx.FX
+import tornadofx.addStageIcon
 import java.awt.SplashScreen
 
 class TubeloaderApp : App(MainLayout::class) {
@@ -20,7 +22,7 @@ class TubeloaderApp : App(MainLayout::class) {
         Log4jBridgeHandler.install(true, ".", true)
         FX.dicontainer = createDIContainer()
         FX.layoutDebuggerShortcut = KeyCodeCombination(KeyCode.F12)
-//        addStageIcon(Image(resources.stream("/img/arrow.png")))
+        addStageIcon(Image(resources.stream("/img/logo.png")))
         GlyphFontRegistry.register(FontAwesome(resources.stream("/org/controlsfx/glyphfont/fontawesome-webfont.ttf")))
     }
 
@@ -33,5 +35,4 @@ class TubeloaderApp : App(MainLayout::class) {
     override fun init() {
         SplashScreen.getSplashScreen()?.close()
     }
-
 }
