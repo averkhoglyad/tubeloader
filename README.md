@@ -4,7 +4,7 @@ GUI tool to download videos from YouTube
 
 ## Building
 
-Since ffmpeg codecs are used to concat video and audio files. Codecs are powered by JAVE2 library. 
+Since ffmpeg codecs are used to concat video and audio files. Codecs are powered by [JAVE2 library](https://github.com/a-schild/jave2). 
 Build must be executed for with parameter to define native bins depends on target env.
 Pass project parameter `ffmpegbin` on task run to define native bins, e.g. `gradle distZip -Pffmpegbin=win64`. 
 
