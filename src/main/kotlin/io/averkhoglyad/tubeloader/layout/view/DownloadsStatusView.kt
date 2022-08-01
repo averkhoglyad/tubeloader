@@ -20,20 +20,10 @@ class DownloadsStatusView : View() {
     private val downloads = observableListOf<DownloadTask>()
     private val doneTasks = SimpleIntegerProperty()
 
-    override val root = hbox {
-        label {
-            GlobalScope.launch(Dispatchers.JavaFx) {
-                val counter = AtomicInteger()
-                ticker(100)
-                    .consumeEach { this@label.text = "${counter.getAndIncrement() % 10}" }
-            }
-        }
-        statusbar {
-            fitToWidth(this@hbox)
+    override val root =statusbar {
             downloads.onChange {
                 handleProgress(it.list)
             }
-        }
     }
 
     private fun StatusBar.handleProgress(list: List<DownloadTask>) {

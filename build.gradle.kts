@@ -5,6 +5,11 @@ version = "1.0-SNAPSHOT"
 
 val targetJvmVersion = JavaVersion.VERSION_17.toString()
 
+val ffmpegbin : String?  by project
+if (ffmpegbin.isNullOrBlank()) {
+    throw IllegalStateException("ffmpegbin is not defined, run gradle task with parameter -Pffmpegbin and pass codecs depends on target en, e.g. -Pffmpegbin=win64")
+}
+
 plugins {
     kotlin("jvm") version "1.7.0"
     id("org.openjfx.javafxplugin") version "0.0.13"
@@ -18,7 +23,13 @@ javafx {
 }
 
 application {
-    mainClass.set("net.averkhoglyad.grex.arrow.MainKt")
+    mainClass.set("io.averkhoglyad.tubeloader.MainKt")
+}
+
+distributions {
+    main {
+        distributionBaseName.set("${project.name}-${ffmpegbin}")
+    }
 }
 
 repositories {
@@ -32,12 +43,6 @@ dependencyManagement {
         mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.3")
     }
 }
-
-val ffmpegbin : String?  by project
-if (ffmpegbin.isNullOrBlank()) {
-    throw IllegalStateException("ffmpegbin is not defined, run gradle task with parameter -Pffmpegbin and pass codecs depends on target en, e.g. -Pffmpegbin=win64")
-}
-logger.info("ffmpegbin = ${ffmpegbin}")
 
 dependencies {
     // Kotlin
