@@ -33,10 +33,16 @@ dependencyManagement {
     }
 }
 
+val ffmpegbin : String?  by project
+if (ffmpegbin.isNullOrBlank()) {
+    throw IllegalStateException("ffmpegbin is not defined, run gradle task with parameter -Pffmpegbin and pass codecs depends on target en, e.g. -Pffmpegbin=win64")
+}
+logger.info("ffmpegbin = ${ffmpegbin}")
+
 dependencies {
     // Kotlin
     implementation(kotlin("stdlib-jdk8"))
-    implementation(kotlin("reflect"))
+//    implementation(kotlin("reflect"))
 
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8")
@@ -45,7 +51,13 @@ dependencies {
     // Video/Audio
     implementation("com.github.sealedtx:java-youtube-downloader:3.0.2")
     implementation("ws.schild:jave-core:3.3.1")
-    implementation("ws.schild:jave-nativebin-win64:3.3.1")
+    
+    implementation("ws.schild:jave-nativebin-${ffmpegbin}:3.3.1")
+//    implementation("ws.schild:jave-nativebin-win64:3.3.1")
+//    implementation("ws.schild:jave-nativebin-osx64:3.3.1")
+//    implementation("ws.schild:jave-nativebin-osxm1:3.3.1")
+//    implementation("ws.schild:jave-nativebin-linux64:3.3.1")
+//    implementation("ws.schild:jave-nativebin-linux-arm64:3.3.1")
 
     // UI
     implementation("no.tornado:tornadofx:1.7.20")

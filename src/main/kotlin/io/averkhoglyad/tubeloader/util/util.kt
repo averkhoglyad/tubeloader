@@ -1,6 +1,6 @@
 package io.averkhoglyad.tubeloader.util
 
-val logger by log4j("io.averkhoglyad.tuber.util")
+val logger by log4j("io.averkhoglyad.tubeloader.util")
 
 inline fun <reified T> quite(fn: () -> T?): T? {
     return try {
@@ -14,7 +14,7 @@ inline fun <reified T> quite(fn: () -> T?): T? {
 fun String.toTitleCase(): String {
     val sb: StringBuilder = StringBuilder(this.length)
     var newWord = true
-    this.forEachIndexed { index, char ->
+    this.forEach { char ->
         if (newWord) {
             sb.append(char.uppercaseChar())
         } else {
