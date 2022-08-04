@@ -6,15 +6,16 @@ version = "1.0-SNAPSHOT"
 val targetJvmVersion = JavaVersion.VERSION_17.toString()
 
 val ffmpegbin : String?  by project
-if (ffmpegbin.isNullOrBlank()) {
-    throw IllegalStateException("ffmpegbin is not defined, run gradle task with parameter -Pffmpegbin and pass codecs depends on target en, e.g. -Pffmpegbin=win64")
-}
+//if (ffmpegbin.isNullOrBlank()) {
+//    throw IllegalStateException("ffmpegbin is not defined, run gradle task with parameter -Pffmpegbin and pass codecs depends on target en, e.g. -Pffmpegbin=win64")
+//}
 
 plugins {
     kotlin("jvm") version "1.7.0"
     id("org.openjfx.javafxplugin") version "0.0.13"
     id("io.spring.dependency-management") version "1.0.1.RELEASE"
     application
+//    id("org.beryx.jlink") version "2.25.0"
 }
 
 javafx {
@@ -65,7 +66,14 @@ dependencies {
 //    implementation("ws.schild:jave-nativebin-linux-arm64:3.3.1")
 
     // UI
-    implementation("no.tornado:tornadofx:1.7.20")
+    (listOf("javafx-base") + (javafx.modules.map { it.replace(".", "-") }))
+        .map {"org.openjfx:$it:${javafx.version}"}
+        .flatMap { listOf("$it:win", "$it:linux", "$it:mac") }
+        .forEach { runtimeOnly(it) }
+
+    implementation("no.tornado:tornadofx:1.7.20") {
+        exclude("org.jetbrains.kotlin")
+    }
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")
     implementation("org.controlsfx:controlsfx:11.1.1")
 
@@ -94,3 +102,18 @@ tasks.withType<JavaCompile> {
     sourceCompatibility = targetJvmVersion
     targetCompatibility = targetJvmVersion
 }
+
+//jlink {
+//    launcher {
+//
+//    }
+//}
+
+//tasks.withType<JlinkTask> {
+//    launcherData.name = "Tubeloader"
+//    launcherData.jvmArgs
+//    launcher {
+//        name = 'PDF Decorator'
+//        jvmArgs = ['-Djdk.gtk.version=2'] // required due to a bug in Java: https://github.com/javafxports/openjdk-jfx/issues/175
+//    }
+//}
