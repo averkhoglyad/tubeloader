@@ -5,13 +5,29 @@
 <!--            <ThresholdFilter level="${console.thresholdFilter}"/>-->
             <PatternLayout pattern="%d %-5p [%t] %c{10} - %m%n"/>
         </Console>
+        <RollingFile name="FILE"
+                     fileName="${sys:user.home}/.tubeloader/app.log"
+                     filePattern="${sys:user.home}/.tubeloader/app.%d{yyyy-MM-dd}.log">
+            <PatternLayout pattern="%d %-5p [%t] %c{10} - %m%n"/>
+            <Policies>
+                <TimeBasedTriggeringPolicy interval="1" modulate="true" />
+                <SizeBasedTriggeringPolicy size="10MB" />
+            </Policies>
+            <DefaultRolloverStrategy max="32">
+                <Delete basePath="${sys:user.home}/.tubeloader" maxDepth="30">
+                    <IfLastModified age="30d" />
+                </Delete>
+            </DefaultRolloverStrategy>
+        </RollingFile>
     </Appenders>
     <Loggers>
         <Logger name="io.averkhoglyad" level="debug" additivity="false">
             <AppenderRef ref="CONSOLE"/>
+            <AppenderRef ref="FILE"/>
         </Logger>
         <Root level="error">
             <AppenderRef ref="CONSOLE"/>
+            <AppenderRef ref="FILE"/>
         </Root>
     </Loggers>
 </Configuration>
