@@ -1,35 +1,82 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
+import java.nio.file.Files
+import java.nio.file.Paths
 
 group = "io.averkhoglyad"
 version = "1.0-SNAPSHOT"
 
 val targetJvmVersion = JavaVersion.VERSION_17.toString()
 
-val ffmpegbin : String?  by project
-//if (ffmpegbin.isNullOrBlank()) {
-//    throw IllegalStateException("ffmpegbin is not defined, run gradle task with parameter -Pffmpegbin and pass codecs depends on target en, e.g. -Pffmpegbin=win64")
-//}
-
 plugins {
-    kotlin("jvm") version "1.7.0"
-    id("org.openjfx.javafxplugin") version "0.0.13"
-    id("io.spring.dependency-management") version "1.0.1.RELEASE"
     application
+    kotlin("jvm") version "1.6.21"
+    id("org.openjfx.javafxplugin") version "0.0.12"
+    id("io.spring.dependency-management") version "1.0.1.RELEASE"
 //    id("org.beryx.jlink") version "2.25.0"
+    id("org.panteleyev.jpackageplugin") version "1.3.1"
+//    id("com.xcporter.jpkg") version "0.0.8"
 }
+
+val compileKotlin: KotlinCompile by tasks
+val compileJava: JavaCompile by tasks
+compileJava.destinationDirectory.set(compileKotlin.destinationDirectory.get())
+
+tasks.test {
+    useJUnitPlatform()
+}
+
+tasks.compileJava {
+    sourceCompatibility = targetJvmVersion
+    targetCompatibility = targetJvmVersion
+}
+
+tasks.compileKotlin {
+    kotlinOptions {
+        jvmTarget = targetJvmVersion
+    }
+}
+
+val ffmpegbin : String?  by project
 
 javafx {
     version = targetJvmVersion
     modules("javafx.controls", "javafx.graphics", "javafx.swing")
 }
 
-application {
-    mainClass.set("io.averkhoglyad.tubeloader.MainKt")
+task("copyDependencies", Copy::class) {
+    from(configurations.runtimeClasspath).into("$buildDir/jars")
 }
 
-distributions {
-    main {
-        distributionBaseName.set("${project.name}-${ffmpegbin}")
+task("copyJar", Copy::class) {
+    from(tasks.jar).into("$buildDir/jars")
+}
+
+task("deleteDist", Copy::class) {
+    from(tasks.jar).into("$buildDir/jars")
+    delete("$buildDir/dist")
+}
+
+tasks.jpackage {
+    dependsOn("build", "copyDependencies", "copyJar", "deleteDist")
+
+    input  = "$buildDir/jars"
+    destination = "$buildDir/dist"
+
+    appName = "TubeLoader"
+    vendor = "a.v.verkhoglyad"
+    appVersion = "1"
+    copyright = "Copyright (c) 2022 a.v.verkhoglyad"
+
+    mainJar = tasks.jar.get().archiveFileName.get()
+    mainClass = "io.averkhoglyad.tubeloader.MainKt"
+
+    javaOptions = listOf("-Dfile.encoding=UTF-8")
+
+    type = org.panteleyev.jpackage.ImageType.APP_IMAGE
+
+    windows {
+        winConsole = false
+        icon = "logo.ico"
     }
 }
 
@@ -40,8 +87,8 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom("org.apache.logging.log4j:log4j-bom:2.17.2")
-        mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.3")
+        mavenBom("org.apache.logging.log4j:log4j-bom:2.18.0")
+        mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.4")
     }
 }
 
@@ -58,18 +105,18 @@ dependencies {
     implementation("com.github.sealedtx:java-youtube-downloader:3.0.2")
     implementation("ws.schild:jave-core:3.3.1")
     
-    implementation("ws.schild:jave-nativebin-${ffmpegbin}:3.3.1")
-//    implementation("ws.schild:jave-nativebin-win64:3.3.1")
+//    implementation("ws.schild:jave-nativebin-${ffmpegbin}:3.3.1")
+    implementation("ws.schild:jave-nativebin-win64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-osx64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-osxm1:3.3.1")
 //    implementation("ws.schild:jave-nativebin-linux64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-linux-arm64:3.3.1")
 
     // UI
-    (listOf("javafx-base") + (javafx.modules.map { it.replace(".", "-") }))
-        .map {"org.openjfx:$it:${javafx.version}"}
-        .flatMap { listOf("$it:win", "$it:linux", "$it:mac") }
-        .forEach { runtimeOnly(it) }
+//    (listOf("javafx-base") + (javafx.modules.map { it.replace(".", "-") }))
+//        .map {"org.openjfx:$it:${javafx.version}"}
+//        .flatMap { listOf("$it:win", "$it:linux", "$it:mac") }
+//        .forEach { runtimeOnly(it) }
 
     implementation("no.tornado:tornadofx:1.7.20") {
         exclude("org.jetbrains.kotlin")
@@ -89,31 +136,3 @@ dependencies {
     // Tests
     testImplementation(kotlin("test"))
 }
-
-tasks.test {
-    useJUnitPlatform()
-}
-
-tasks.withType<KotlinCompile> {
-    kotlinOptions.jvmTarget = targetJvmVersion
-}
-
-tasks.withType<JavaCompile> {
-    sourceCompatibility = targetJvmVersion
-    targetCompatibility = targetJvmVersion
-}
-
-//jlink {
-//    launcher {
-//
-//    }
-//}
-
-//tasks.withType<JlinkTask> {
-//    launcherData.name = "Tubeloader"
-//    launcherData.jvmArgs
-//    launcher {
-//        name = 'PDF Decorator'
-//        jvmArgs = ['-Djdk.gtk.version=2'] // required due to a bug in Java: https://github.com/javafxports/openjdk-jfx/issues/175
-//    }
-//}

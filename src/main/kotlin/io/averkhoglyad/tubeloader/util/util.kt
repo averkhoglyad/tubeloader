@@ -2,7 +2,7 @@ package io.averkhoglyad.tubeloader.util
 
 val logger by log4j("io.averkhoglyad.tubeloader.util")
 
-inline fun <reified T> quite(fn: () -> T?): T? {
+inline fun <reified T> quietly(fn: () -> T?): T? {
     return try {
         fn()
     } catch (e: Exception) {

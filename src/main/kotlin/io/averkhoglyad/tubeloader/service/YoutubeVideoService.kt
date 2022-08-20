@@ -14,7 +14,7 @@ import com.github.kiulian.downloader.model.videos.quality.VideoQuality
 import io.averkhoglyad.tubeloader.data.DownloadOption
 import io.averkhoglyad.tubeloader.data.VideoDetails
 import io.averkhoglyad.tubeloader.util.log4j
-import io.averkhoglyad.tubeloader.util.quite
+import io.averkhoglyad.tubeloader.util.quietly
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
@@ -47,7 +47,7 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
     fun parseVideoId(url: String): String? {
         val query = url.takeIf { it.isNotBlank() }
             ?.let { it.trim() } ?: return null
-        val url: URL = quite { URL(query) } ?: return null
+        val url: URL = quietly { URL(query) } ?: return null
         val host = url.host.replace("^www\\.".toRegex(), "")
         if (host.startsWith("youtube")) {
             if (url.path.startsWith("/shorts/")) {
@@ -97,11 +97,11 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
 
         logger.debug("-- detected high quality without audio formats: {}", Supplier { highQualityVideoWithoutAudioFormats.asString() })
 
-        val formats = highQualityVideoWithoutAudioFormats + videoWithAudioFormats
+        val allFormats = highQualityVideoWithoutAudioFormats + videoWithAudioFormats
 
-        logger.debug("-- all selected video formats: {}", Supplier { formats.asString() })
+        logger.debug("-- all selected video formats: {}", Supplier { allFormats.asString() })
 
-        val options = formats
+        val options = allFormats
             .filter { it.videoQuality() > VideoQuality.noVideo }
             .sortedByDescending { it.videoQuality().ordinal }
             .groupBy { it.videoQuality() }
@@ -109,7 +109,7 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
                 formats.groupBy { it.fps() }.values
             }
             .map { formats ->
-                val videoFmt = formats.maxBy { it.bitrate() }
+                val videoFmt = formats.sortedByDescending { it.bitrate() }.first()
                 createDownloadOption(videoFmt, bestAudioFormat)
             }
 
@@ -210,11 +210,11 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
                 mergeVideoAndAudioFiles(target, tmpAudioFile, tmpVideoFile, encodeCh)
                 progressCh?.send(1.0)
             } finally {
-                quite { Files.delete(tmpAudioFile) }
-                quite { Files.delete(tmpVideoFile) }
-                quite { audioCh.close() }
-                quite { videoCh.close() }
-                quite { encodeCh.close() }
+                quietly { Files.delete(tmpAudioFile) }
+                quietly { Files.delete(tmpVideoFile) }
+                quietly { audioCh.close() }
+                quietly { videoCh.close() }
+                quietly { encodeCh.close() }
             }
         }
     }

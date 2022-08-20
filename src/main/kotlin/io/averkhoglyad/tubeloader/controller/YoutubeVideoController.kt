@@ -6,7 +6,7 @@ import io.averkhoglyad.tubeloader.data.TaskStatus
 import io.averkhoglyad.tubeloader.data.VideoDetails
 import io.averkhoglyad.tubeloader.service.YoutubeVideoService
 import io.averkhoglyad.tubeloader.util.log4j
-import io.averkhoglyad.tubeloader.util.quite
+import io.averkhoglyad.tubeloader.util.quietly
 import kotlinx.coroutines.*
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.channels.consumeEach
@@ -50,11 +50,11 @@ class YoutubeVideoController : Controller() {
                 GlobalScope.launch(Dispatchers.JavaFx) { task.status(TaskStatus.DONE) }
             } catch (e: CancellationException) {
                 logger.debug("Download is canceled")
-                quite { Files.delete(target) }
+                quietly { Files.delete(target) }
                 GlobalScope.launch(Dispatchers.JavaFx) { task.status(TaskStatus.CANCELED) }
             } catch (e: Exception) {
                 logger.error("Error on downloading", e)
-                quite { Files.delete(target) }
+                quietly { Files.delete(target) }
                 val message = "Error: ${e.message ?: "Error on downloading"}"
                 GlobalScope.launch(Dispatchers.JavaFx) { task.status(TaskStatus.FAILED, message) }
             } finally {
