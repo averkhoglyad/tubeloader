@@ -120,7 +120,7 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
 
     private fun createDownloadOption(videoFmt: VideoFormat, audioFmt: AudioFormat): DownloadOption {
         val extension = videoFmt.extension().takeUnless { it == Extension.WEBM }?.value() ?: "mp4"
-        val label = "${videoFmt.qualityLabel()}${videoFmt.fps().takeIf { it > 30 } ?: ""}"
+        val label = videoFmt.qualityLabel()
         return DownloadOption(label, extension, FormatToDownload(videoFmt, audioFmt))
     }
 
