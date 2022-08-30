@@ -13,4 +13,4 @@ More native bin artefacts here: [JAVE2 native bins](https://mvnrepository.com/se
 
 ## License
 
-I hope [Apache 2.0 License](https://www.apache.org/licenses/LICENSE-2.0) must be enough for everybody.
+Tubeloader is Free Software and it is licensed under [GPL3 LICENSE](https://github.com/averkhoglyad/tubeloader/blob/master/LICENSE).
