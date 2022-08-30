@@ -5,11 +5,15 @@ import io.averkhoglyad.tubeloader.data.VideoDetails
 import io.averkhoglyad.tubeloader.util.CallbackFn
 import io.averkhoglyad.tubeloader.util.fontawesome
 import io.averkhoglyad.tubeloader.util.noCallback
+import javafx.embed.swing.SwingFXUtils
 import javafx.geometry.Insets
 import javafx.geometry.Pos
+import javafx.scene.image.Image
 import javafx.scene.text.FontWeight
 import org.controlsfx.glyphfont.FontAwesome
 import tornadofx.*
+import java.net.URL
+import javax.imageio.ImageIO
 import kotlin.time.Duration
 
 class VideoCardFragment : ListCellFragment<VideoDetails>() {
@@ -19,7 +23,20 @@ class VideoCardFragment : ListCellFragment<VideoDetails>() {
     override val root = vbox {
         borderpane {
             left {
-                imageview(itemProperty.select { it.thumbnail.toProperty() }) {
+                imageview {
+                    itemProperty.select { it.thumbnail.toProperty() }
+                        .onChange {
+                            if (it != null) {
+                                if (it.endsWith(".webp")) {
+                                    runAsync {
+                                        image = SwingFXUtils.toFXImage(ImageIO.read(URL(it)), null)
+                                    }
+                                } else {
+                                    image = Image(it, true)
+                                }
+                            }
+                        }
+
                     prefWidth(250.0)
                     maxHeight(250.0)
                 }

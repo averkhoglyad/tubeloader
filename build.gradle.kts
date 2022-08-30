@@ -124,6 +124,8 @@ dependencies {
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")
     implementation("org.controlsfx:controlsfx:11.1.1")
 
+    implementation("org.sejda.imageio:webp-imageio:0.1.6")
+
     // DI
     implementation("org.picocontainer:picocontainer:2.15")
 
