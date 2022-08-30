@@ -24,6 +24,7 @@ class QueryView : View() {
             paddingLeft = 5.0
             paddingRight = 5.0
             textfield(searchField) {
+                isFocusTraversable = false
                 promptText = "Enter URL or ID"
                 disableWhen(searchingProperty)
                 prefWidthProperty().bind(this@hbox.widthProperty() - 40.0)

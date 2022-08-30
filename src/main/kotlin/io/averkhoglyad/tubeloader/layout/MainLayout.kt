@@ -7,6 +7,7 @@ import io.averkhoglyad.tubeloader.layout.fragment.DownloadRequest
 import io.averkhoglyad.tubeloader.layout.view.*
 import io.averkhoglyad.tubeloader.util.consumeCloseRequest
 import io.averkhoglyad.tubeloader.util.log4j
+import io.averkhoglyad.tubeloader.util.requestClose
 import javafx.scene.image.Image
 import javafx.stage.FileChooser
 import kotlinx.coroutines.Dispatchers
@@ -29,10 +30,14 @@ class MainLayout : View("Tubeloader - Download videos from Youtube") {
     private val videosView by inject<VideosListView>()
     private val tasksView by inject<TasksListView>()
     private val statusView by inject<DownloadsStatusView>()
+    private val topMenuView by inject<TopMenuView>()
 
     override val root = borderpane {
         top {
-            this += queryView
+            vbox {
+                this += topMenuView
+                this += queryView
+            }
         }
         center {
             splitpane {
