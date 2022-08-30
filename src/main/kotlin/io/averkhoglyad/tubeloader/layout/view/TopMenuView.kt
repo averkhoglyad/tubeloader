@@ -1,6 +1,5 @@
 package io.averkhoglyad.tubeloader.layout.view
 
-import io.averkhoglyad.tubeloader.layout.fragment.AboutPopup
 import io.averkhoglyad.tubeloader.util.requestClose
 import javafx.stage.StageStyle
 import tornadofx.*

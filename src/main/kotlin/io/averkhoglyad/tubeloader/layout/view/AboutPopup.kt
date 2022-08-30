@@ -1,12 +1,12 @@
-package io.averkhoglyad.tubeloader.layout.fragment
+package io.averkhoglyad.tubeloader.layout.view
 
 import javafx.scene.paint.Color
 import javafx.scene.text.Font
 import tornadofx.*
 
-class AboutPopup: Fragment() {
+class AboutPopup: View("About") {
 
-    override val root = vbox(15) {
+    override val root = vbox(10) {
         padding = insets(20.0)
         minWidth = 300.0
         maxWidth = 400.0
@@ -24,7 +24,10 @@ class AboutPopup: Fragment() {
         hbox {
             textflow {
                 text("Simple tool to download videos from YouTube\n")
-                text("This program is free software; it is distributed in the hope that it will be useful \"AS IS\" WITHOUT WARRANTY OF ANY KIND")
+                text("""
+                    |This program is free software; it is distributed in the hope that it will be useful.
+                    |User could use it "AS IS" WITHOUT WARRANTY OF ANY KIND
+                    |""".trimMargin())
             }
         }
         hbox {
@@ -49,5 +52,4 @@ class AboutPopup: Fragment() {
             }
         }
     }
-
 }
