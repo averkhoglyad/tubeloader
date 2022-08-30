@@ -93,6 +93,7 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
         logger.debug("-- detected all video with audio formats: {}", Supplier { videoWithAudioFormats.asString() })
 
         val highQualityVideoWithoutAudioFormats = video.videoFormats()
+            .filter { bestAudioFormat != null }
             .filter { it.videoQuality().ordinal > bestVideoWithAudioFormat.videoQuality().ordinal }
 
         logger.debug("-- detected high quality without audio formats: {}", Supplier { highQualityVideoWithoutAudioFormats.asString() })
@@ -118,7 +119,7 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
         return options
     }
 
-    private fun createDownloadOption(videoFmt: VideoFormat, audioFmt: AudioFormat): DownloadOption {
+    private fun createDownloadOption(videoFmt: VideoFormat, audioFmt: AudioFormat?): DownloadOption {
         val extension = videoFmt.extension().takeUnless { it == Extension.WEBM }?.value() ?: "mp4"
         val label = videoFmt.qualityLabel()
         return DownloadOption(label, extension, FormatToDownload(videoFmt, audioFmt))
@@ -126,7 +127,7 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
 
     suspend fun downloadFromYoutube(target: Path, option: DownloadOption, progressCh: Channel<Double>? = null) {
         val (videoFmt, audioFmt) = option.data as FormatToDownload
-        if (videoFmt is VideoWithAudioFormat) {
+        if (videoFmt is VideoWithAudioFormat || audioFmt == null) {
             return doDownloadFromYoutube(target, videoFmt, progressCh)
         } else {
             return doDownloadVideoWithAudio(target, videoFmt, audioFmt, progressCh)
@@ -159,10 +160,10 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
         }
     }
 
-    private  suspend fun doDownloadVideoWithAudio(target: Path,
-                                                  videoFmt: VideoFormat,
-                                                  audioFmt: AudioFormat,
-                                                  progressCh: Channel<Double>? = null) {
+    private suspend fun doDownloadVideoWithAudio(target: Path,
+                                                 videoFmt: VideoFormat,
+                                                 audioFmt: AudioFormat,
+                                                 progressCh: Channel<Double>? = null) {
         if (Files.exists(target)) {
             Files.write(target, byteArrayOf(), StandardOpenOption.TRUNCATE_EXISTING)
         } else { // To pin filename in the filesystem
@@ -258,9 +259,19 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
     }
 }
 
-private fun AudioFormat.asString() = "${audioQuality()} ${extension().value()} ${mimeType()} ${averageBitrate()}bps"
+private fun AudioFormat?.asString(): String {
+    if (this == null) {
+        return "<null>"
+    }
+    return "${audioQuality()} ${extension().value()} ${mimeType()} ${averageBitrate()}bps"
+}
 
-private fun VideoFormat.asString() = "${qualityLabel()} ${extension().value()} ${mimeType()} ${fps()}fps"
+private fun VideoFormat?.asString(): String {
+    if (this == null) {
+        return "<null>"
+    }
+    return "${qualityLabel()} ${extension().value()} ${mimeType()} ${fps()}fps"
+}
 
 private fun List<Any>.asString() = this.takeUnless { it.isEmpty() }
     ?.let { items ->
@@ -275,4 +286,4 @@ private fun List<Any>.asString() = this.takeUnless { it.isEmpty() }
             .joinToString("\n  - ", prefix = "\n  - ")
     } ?: "<empty>"
 
-private data class FormatToDownload(val video: VideoFormat, val audio: AudioFormat)
+private data class FormatToDownload(val video: VideoFormat, val audio: AudioFormat?)
