@@ -4,18 +4,12 @@ GUI tool to download videos from YouTube
 
 ## Building
 
-Since ffmpeg codecs are used to concat video and audio files. Codecs are powered by [JAVE2 library](https://github.com/a-schild/jave2). 
-Build must be executed for with parameter to define native bins depends on target env.
-Pass project parameter `ffmpegbin` on task run to define native bins, e.g. `gradle distZip -Pffmpegbin=win64`. 
+For now win64 build is supported only.
+Build using gradle: `gradle jpackage --info`
 
-Some of possible values:
-- win64
-- linux64 
-- linux-arm64
-- osx64
-- osxm1
-
-Find more native bin artefacts here: [JAVE2 native bins](https://mvnrepository.com/search?q=ws.schild%3Ajave-nativebin)
+## Codecs
+Codecs are powered by [JAVE2 library](https://github.com/a-schild/jave2) and [win64 native](https://mvnrepository.com/artifact/ws.schild/jave-nativebin-win64). 
+More native bin artefacts here: [JAVE2 native bins](https://mvnrepository.com/search?q=ws.schild%3Ajave-nativebin)
 
 ## License
 
