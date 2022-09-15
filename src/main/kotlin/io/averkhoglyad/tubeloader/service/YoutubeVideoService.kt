@@ -187,13 +187,15 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
                     videoFmt.contentLength().toDouble() / (audioFmt.contentLength() + videoFmt.contentLength())
 
                 launch {
-                    audioCh.consumeEach { progressAudio ->
+                    audioCh.consumeEach { progress ->
+                        progressAudio = progress
                         progressCh?.takeUnless { it.isClosedForSend }
                             ?.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
                     }
                 }
                 launch {
-                    videoCh.consumeEach { progressVideo ->
+                    videoCh.consumeEach { progress ->
+                        progressVideo = progress
                         progressCh?.takeUnless { it.isClosedForSend }
                             ?.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
                     }
