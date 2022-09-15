@@ -139,7 +139,8 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
             val request = RequestVideoStreamDownload(format, out)
             progressCh?.let { request.callback(callback("${target.fileName} downloading progress", progressCh)) }
             downloader.downloadVideoStream(request)
-            progressCh?.send(1.0)
+            progressCh?.takeUnless { it.isClosedForSend }
+                ?.send(1.0)
             logger.debug("${target.fileName} downloading is done")
         }
     }
@@ -186,15 +187,15 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
                     videoFmt.contentLength().toDouble() / (audioFmt.contentLength() + videoFmt.contentLength())
 
                 launch {
-                    audioCh.consumeEach {
-                        progressAudio = it
-                        progressCh?.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
+                    audioCh.consumeEach { progressAudio ->
+                        progressCh?.takeUnless { it.isClosedForSend }
+                            ?.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
                     }
                 }
                 launch {
-                    videoCh.consumeEach {
-                        progressVideo = it
-                        progressCh?.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
+                    videoCh.consumeEach { progressVideo ->
+                        progressCh?.takeUnless { it.isClosedForSend }
+                            ?.send((progressAudio * audioPortion + progressVideo * videoPortion) * audioAndVideoDownloadingProgressPart)
                     }
                 }
 
@@ -203,13 +204,15 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
                 awaitAll(audioDef, videoDef)
 
                 launch {
-                    encodeCh.consumeEach {
-                        progressCh?.send(audioAndVideoDownloadingProgressPart + it * encodingProgressPart)
+                    encodeCh.consumeEach { progress ->
+                        progressCh?.takeUnless { it.isClosedForSend }
+                            ?.send(audioAndVideoDownloadingProgressPart + progress * encodingProgressPart)
                     }
                 }
 
                 mergeVideoAndAudioFiles(target, tmpAudioFile, tmpVideoFile, encodeCh)
-                progressCh?.send(1.0)
+                progressCh?.takeUnless { it.isClosedForSend }
+                    ?.send(1.0)
             } finally {
                 quietly { Files.delete(tmpAudioFile) }
                 quietly { Files.delete(tmpVideoFile) }
