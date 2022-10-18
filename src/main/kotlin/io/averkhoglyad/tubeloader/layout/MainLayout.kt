@@ -10,10 +10,8 @@ import io.averkhoglyad.tubeloader.util.log4j
 import io.averkhoglyad.tubeloader.util.requestClose
 import javafx.scene.image.Image
 import javafx.stage.FileChooser
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.*
 import kotlinx.coroutines.javafx.JavaFx
-import kotlinx.coroutines.launch
 import tornadofx.*
 import java.io.File
 import java.nio.file.Path
@@ -59,8 +57,8 @@ class MainLayout : View("Tubeloader - Download videos from Youtube") {
         primaryStage.apply {
             minWidth = 900.0
             minHeight = 600.0
-            width = 900.0
-            height = 600.0
+            width = 1360.0
+            height = 768.0
             consumeCloseRequest { window ->
                 confirm(title = "Confirm exit", header = "Are you sure you want to exit?") {
                     window.close()

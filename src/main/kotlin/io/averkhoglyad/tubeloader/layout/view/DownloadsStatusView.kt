@@ -20,10 +20,12 @@ class DownloadsStatusView : View() {
     private val downloads = observableListOf<DownloadTask>()
     private val doneTasks = SimpleIntegerProperty()
 
-    override val root =statusbar {
-            downloads.onChange {
-                handleProgress(it.list)
-            }
+    override val root = statusbar()
+
+    init {
+        downloads.onChange {
+            root.handleProgress(it.list)
+        }
     }
 
     private fun StatusBar.handleProgress(list: List<DownloadTask>) {

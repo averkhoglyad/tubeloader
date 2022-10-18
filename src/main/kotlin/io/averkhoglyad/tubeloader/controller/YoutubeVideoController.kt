@@ -1,5 +1,6 @@
 package io.averkhoglyad.tubeloader.controller
 
+import com.github.kiulian.downloader.model.playlist.PlaylistInfo
 import io.averkhoglyad.tubeloader.data.DownloadOption
 import io.averkhoglyad.tubeloader.data.DownloadTask
 import io.averkhoglyad.tubeloader.data.TaskStatus
@@ -28,6 +29,12 @@ class YoutubeVideoController : Controller() {
     fun loadVideoInfoAsync(videoId: String): Deferred<VideoDetails?> {
         return GlobalScope.async(Dispatchers.IO) {
             service.videoInfo(videoId)
+        }
+    }
+
+    fun loadPlaylistInfoAsync(playlistId: String): Deferred<PlaylistInfo?> {
+        return GlobalScope.async(Dispatchers.IO) {
+            service.playlistInfo(playlistId)
         }
     }
 
