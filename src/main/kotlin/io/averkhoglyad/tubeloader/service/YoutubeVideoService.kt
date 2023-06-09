@@ -2,9 +2,11 @@ package io.averkhoglyad.tubeloader.service
 
 import com.github.kiulian.downloader.YoutubeDownloader
 import com.github.kiulian.downloader.downloader.YoutubeProgressCallback
+import com.github.kiulian.downloader.downloader.request.RequestPlaylistInfo
 import com.github.kiulian.downloader.downloader.request.RequestVideoInfo
 import com.github.kiulian.downloader.downloader.request.RequestVideoStreamDownload
 import com.github.kiulian.downloader.model.Extension
+import com.github.kiulian.downloader.model.playlist.PlaylistInfo
 import com.github.kiulian.downloader.model.videos.VideoInfo
 import com.github.kiulian.downloader.model.videos.formats.AudioFormat
 import com.github.kiulian.downloader.model.videos.formats.Format
@@ -261,6 +263,11 @@ class YoutubeVideoService(private val downloader: YoutubeDownloader) {
         }
         Encoder().encode(multimediaObjects, target.toFile(), encodingAttributes, listener)
         logger.debug("${target.fileName} encoding is done")
+    }
+
+    fun playlistInfo(playlistId: String): PlaylistInfo? {
+        val request = RequestPlaylistInfo(playlistId)
+        return downloader.getPlaylistInfo(request)?.data()
     }
 }
 

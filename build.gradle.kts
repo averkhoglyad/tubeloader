@@ -1,6 +1,4 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import java.nio.file.Files
-import java.nio.file.Paths
 
 group = "io.averkhoglyad"
 version = "1.0-SNAPSHOT"
@@ -10,11 +8,9 @@ val targetJvmVersion = JavaVersion.VERSION_17.toString()
 plugins {
     application
     kotlin("jvm") version "1.6.21"
-    id("org.openjfx.javafxplugin") version "0.0.12"
-    id("io.spring.dependency-management") version "1.0.1.RELEASE"
-//    id("org.beryx.jlink") version "2.25.0"
-    id("org.panteleyev.jpackageplugin") version "1.3.1"
-//    id("com.xcporter.jpkg") version "0.0.8"
+    id("org.openjfx.javafxplugin") version "0.0.13"
+    id("io.spring.dependency-management") version "1.1.0"
+    id("org.panteleyev.jpackageplugin") version "1.5.2"
 }
 
 val compileKotlin: KotlinCompile by tasks
@@ -64,8 +60,8 @@ tasks.jpackage {
 
     appName = "TubeLoader"
     vendor = "a.v.verkhoglyad"
-    appVersion = "1"
-    copyright = "Copyright (c) 2022 a.v.verkhoglyad"
+    appVersion = "1.0.1"
+    copyright = "Copyright (c) 2023 a.v.verkhoglyad"
 
     mainJar = tasks.jar.get().archiveFileName.get()
     mainClass = "io.averkhoglyad.tubeloader.MainKt"
@@ -87,7 +83,7 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom("org.apache.logging.log4j:log4j-bom:2.18.0")
+        mavenBom("org.apache.logging.log4j:log4j-bom:2.20.0")
         mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.4")
     }
 }
@@ -102,21 +98,13 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx")
 
     // Video/Audio
-    implementation("com.github.sealedtx:java-youtube-downloader:3.0.2")
+    implementation("com.github.sealedtx:java-youtube-downloader:3.2.3")
     implementation("ws.schild:jave-core:3.3.1")
-    
-//    implementation("ws.schild:jave-nativebin-${ffmpegbin}:3.3.1")
     implementation("ws.schild:jave-nativebin-win64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-osx64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-osxm1:3.3.1")
 //    implementation("ws.schild:jave-nativebin-linux64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-linux-arm64:3.3.1")
-
-    // UI
-//    (listOf("javafx-base") + (javafx.modules.map { it.replace(".", "-") }))
-//        .map {"org.openjfx:$it:${javafx.version}"}
-//        .flatMap { listOf("$it:win", "$it:linux", "$it:mac") }
-//        .forEach { runtimeOnly(it) }
 
     implementation("no.tornado:tornadofx:1.7.20") {
         exclude("org.jetbrains.kotlin")

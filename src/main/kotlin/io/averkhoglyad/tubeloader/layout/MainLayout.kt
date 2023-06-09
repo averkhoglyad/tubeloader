@@ -116,5 +116,6 @@ class MainLayout : View("Tubeloader - Download videos from Youtube") {
 }
 
 private fun String.removeUnsupportedChars() = this
-    .replace("[\\\\:\\*\\/\\?|<>]".toRegex(), " ")
+    .replace("[\\\\:*/?|<>\"']".toRegex(), " ")
     .replace("\\s+".toRegex(), " ")
+    .replace("(^\\s+|\\s+$)".toRegex(), "")
