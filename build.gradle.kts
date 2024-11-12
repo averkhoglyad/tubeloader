@@ -98,7 +98,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx")
 
     // Video/Audio
-    implementation("com.github.sealedtx:java-youtube-downloader:3.2.3")
+    implementation("com.github.sealedtx:java-youtube-downloader:3.2.6")
     implementation("ws.schild:jave-core:3.3.1")
     implementation("ws.schild:jave-nativebin-win64:3.3.1")
 //    implementation("ws.schild:jave-nativebin-osx64:3.3.1")
