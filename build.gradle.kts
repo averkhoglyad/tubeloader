@@ -1,13 +1,13 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 group = "io.averkhoglyad"
-version = "1.0-SNAPSHOT"
+version = "1.0.3"
 
 val targetJvmVersion = JavaVersion.VERSION_17.toString()
 
 plugins {
     application
-    kotlin("jvm") version "1.6.21"
+    kotlin("jvm") version "1.9.25"
     id("org.openjfx.javafxplugin") version "0.0.13"
     id("io.spring.dependency-management") version "1.1.0"
     id("org.panteleyev.jpackageplugin") version "1.5.2"
@@ -60,8 +60,8 @@ tasks.jpackage {
 
     appName = "TubeLoader"
     vendor = "a.v.verkhoglyad"
-    appVersion = "1.0.1"
-    copyright = "Copyright (c) 2023 a.v.verkhoglyad"
+    appVersion = "1.0.3"
+    copyright = "Copyright (c) 2024 a.v.verkhogliad"
 
     mainJar = tasks.jar.get().archiveFileName.get()
     mainClass = "io.averkhoglyad.tubeloader.MainKt"
@@ -83,8 +83,8 @@ repositories {
 
 dependencyManagement {
     imports {
-        mavenBom("org.apache.logging.log4j:log4j-bom:2.20.0")
-        mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.6.4")
+        mavenBom("org.apache.logging.log4j:log4j-bom:2.24.1")
+        mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.9.0")
     }
 }
 
@@ -99,18 +99,18 @@ dependencies {
 
     // Video/Audio
     implementation("com.github.sealedtx:java-youtube-downloader:3.2.6")
-    implementation("ws.schild:jave-core:3.3.1")
-    implementation("ws.schild:jave-nativebin-win64:3.3.1")
-//    implementation("ws.schild:jave-nativebin-osx64:3.3.1")
-//    implementation("ws.schild:jave-nativebin-osxm1:3.3.1")
-//    implementation("ws.schild:jave-nativebin-linux64:3.3.1")
-//    implementation("ws.schild:jave-nativebin-linux-arm64:3.3.1")
+    implementation("ws.schild:jave-core:3.5.0")
+    implementation("ws.schild:jave-nativebin-win64:3.5.0")
+//    implementation("ws.schild:jave-nativebin-osx64:3.5.0")
+//    implementation("ws.schild:jave-nativebin-osxm1:3.5.0")
+//    implementation("ws.schild:jave-nativebin-linux64:3.5.0")
+//    implementation("ws.schild:jave-nativebin-linux-arm64:3.5.0")
 
-    implementation("no.tornado:tornadofx:1.7.20") {
+        implementation("no.tornado:tornadofx:1.7.20") {
         exclude("org.jetbrains.kotlin")
     }
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")
-    implementation("org.controlsfx:controlsfx:11.1.1")
+    implementation("org.controlsfx:controlsfx:11.2.1")
 
     implementation("org.sejda.imageio:webp-imageio:0.1.6")
 
