@@ -6,12 +6,28 @@ import io.averkhoglyad.tubeloader.util.toTitleCase
 import javafx.beans.property.SimpleObjectProperty
 import javafx.geometry.Insets
 import javafx.geometry.Pos
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.GlobalScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOn
+import kotlinx.coroutines.flow.launchIn
+import kotlinx.coroutines.flow.onEach
+import kotlinx.coroutines.javafx.JavaFx
+import kotlinx.datetime.Clock
 import tornadofx.*
-
+import kotlin.time.Duration
 
 class TaskLineFragment : ListCellFragment<DownloadTask>() {
 
     private val taskStatus = SimpleObjectProperty<TaskStatus?>(null)
+
+    private val timeFlow = flow {
+        while (taskStatus.get() == null || taskStatus.get() == TaskStatus.IN_PROGRESS) {
+            emit(Clock.System.now())
+            delay(500)
+        }
+    }
 
     override val root = borderpane {
         center {
@@ -34,9 +50,20 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
 //                    }
 //                    visibleWhen { taskStatus.isEqualTo(TaskStatus.IN_PROGRESS) }
                 }
-                label {
-                    styleClass += "task-message"
-                    textProperty().bind( itemProperty.select { it.message } )
+                hbox {
+                    spacer()
+                    label {
+                        styleClass += "task-message"
+                        timeFlow
+                            .onEach { time ->
+                                itemProperty.get()
+                                    ?.startedAt
+                                    ?.let { time - it }
+                                    ?.let { this@label.text = "Spent: ${it.toFineString()}" }
+                            }
+                            .flowOn(Dispatchers.JavaFx)
+                            .launchIn(GlobalScope)
+                    }
                 }
             }
         }
@@ -68,5 +95,13 @@ class TaskLineFragment : ListCellFragment<DownloadTask>() {
             taskStatus.unbind()
             item?.status?.let { taskStatus.bind(it) }
         }
+    }
+}
+
+private fun Duration.toFineString(): String {
+    return toComponents { hours, minutes, seconds, nanoseconds ->
+        sequenceOf(hours, minutes, seconds)
+            .map { "%02d".format(it) }
+            .joinToString(":")
     }
 }

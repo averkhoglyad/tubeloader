@@ -2,6 +2,7 @@ package io.averkhoglyad.tubeloader
 
 import com.github.kiulian.downloader.YoutubeDownloader
 import io.averkhoglyad.tubeloader.layout.MainLayout
+import io.averkhoglyad.tubeloader.service.ProfileService
 import io.averkhoglyad.tubeloader.service.YoutubeVideoService
 import io.averkhoglyad.tubeloader.util.PicoDIContainer
 import javafx.scene.image.Image
@@ -16,8 +17,10 @@ import tornadofx.DIContainer
 import tornadofx.FX
 import tornadofx.addStageIcon
 import java.awt.SplashScreen
+import kotlin.io.path.Path
 
 class TubeloaderApp : App(MainLayout::class) {
+
     init {
         Log4jBridgeHandler.install(true, ".", true)
         FX.dicontainer = createDIContainer()
@@ -28,6 +31,11 @@ class TubeloaderApp : App(MainLayout::class) {
 
     private fun createDIContainer(): DIContainer {
         val pico = DefaultPicoContainer()
+
+        val userDir = Path(System.getProperty("user.home"))
+        val appDir = userDir.resolve(".tubeloader")
+        pico.addComponent(ProfileService(appDir.resolve("details"), userDir))
+
         pico.addComponent(YoutubeVideoService(YoutubeDownloader()))
         return PicoDIContainer(pico)
     }

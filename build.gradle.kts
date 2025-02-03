@@ -32,8 +32,6 @@ tasks.compileKotlin {
     }
 }
 
-val ffmpegbin : String?  by project
-
 javafx {
     version = targetJvmVersion
     modules("javafx.controls", "javafx.graphics", "javafx.swing")
@@ -98,7 +96,7 @@ dependencies {
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx")
 
     // Video/Audio
-    implementation("com.github.sealedtx:java-youtube-downloader:3.2.6")
+    implementation("com.github.sealedtx:java-youtube-downloader:3.2.8")
     implementation("ws.schild:jave-core:3.5.0")
     implementation("ws.schild:jave-nativebin-win64:3.5.0")
 //    implementation("ws.schild:jave-nativebin-osx64:3.5.0")
@@ -106,7 +104,8 @@ dependencies {
 //    implementation("ws.schild:jave-nativebin-linux64:3.5.0")
 //    implementation("ws.schild:jave-nativebin-linux-arm64:3.5.0")
 
-        implementation("no.tornado:tornadofx:1.7.20") {
+    // UI
+    implementation("no.tornado:tornadofx:1.7.20") {
         exclude("org.jetbrains.kotlin")
     }
     implementation("no.tornado:tornadofx-controlsfx:0.1.1")

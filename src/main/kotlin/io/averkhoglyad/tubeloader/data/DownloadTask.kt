@@ -3,11 +3,9 @@ package io.averkhoglyad.tubeloader.data
 import io.averkhoglyad.tubeloader.util.CallbackFn
 import io.averkhoglyad.tubeloader.util.noCallback
 import javafx.beans.binding.ObjectExpression
-import javafx.beans.property.ReadOnlyBooleanProperty
-import javafx.beans.property.ReadOnlyBooleanWrapper
-import javafx.beans.property.ReadOnlyDoubleWrapper
-import javafx.beans.property.ReadOnlyObjectProperty
-import javafx.beans.property.ReadOnlyObjectWrapper
+import javafx.beans.property.*
+import kotlinx.datetime.Clock
+import kotlinx.datetime.Instant
 import tornadofx.select
 import tornadofx.toProperty
 import java.nio.file.Path
@@ -18,6 +16,7 @@ class DownloadTask(videoDetails: VideoDetails,
 
     val videoDetails: VideoDetails = videoDetails
     val targetPath: Path = targetPath
+    val startedAt: Instant = Clock.System.now()
 
     private val progressWrapper = ReadOnlyDoubleWrapper(-1.0)
     val progress = progressWrapper.readOnlyProperty

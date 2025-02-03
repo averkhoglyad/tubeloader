@@ -20,8 +20,6 @@ class MainLayout : View("Tubeloader - Download videos from Youtube") {
 
     private val logger by log4j()
 
-    private var initDirToImportFile = File("./")
-
     private val controller: YoutubeVideoController by inject()
 
     private val queryView by inject<QueryView>()
@@ -98,10 +96,12 @@ class MainLayout : View("Tubeloader - Download videos from Youtube") {
     private fun selectFileToSave(initialFileName: String, ext: String): Path? {
         val filters = arrayOf(FileChooser.ExtensionFilter("${ext.uppercase()} file", "*.$ext"))
         val file: File = chooseFile(owner = primaryStage, mode = FileChooserMode.Save, filters = filters) {
-            this@chooseFile.initialDirectory = initDirToImportFile
+            this@chooseFile.initialDirectory = controller.lastSaveDir().toFile()
             this@chooseFile.initialFileName = initialFileName
         }.firstOrNull() ?: return null
-        initDirToImportFile = file.parentFile
+
+        controller.lastSaveDir(file.parentFile.toPath())
+
         if (file.name.endsWith(".$ext")) {
             return file.toPath()
         }

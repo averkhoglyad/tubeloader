@@ -5,6 +5,7 @@ import io.averkhoglyad.tubeloader.data.DownloadOption
 import io.averkhoglyad.tubeloader.data.DownloadTask
 import io.averkhoglyad.tubeloader.data.TaskStatus
 import io.averkhoglyad.tubeloader.data.VideoDetails
+import io.averkhoglyad.tubeloader.service.ProfileService
 import io.averkhoglyad.tubeloader.service.YoutubeVideoService
 import io.averkhoglyad.tubeloader.util.log4j
 import io.averkhoglyad.tubeloader.util.quietly
@@ -19,28 +20,28 @@ import java.nio.file.Path
 class YoutubeVideoController : Controller() {
 
     private val logger by log4j()
-
-    private val service by di<YoutubeVideoService>()
+    private val videoService by di<YoutubeVideoService>()
+    private val profileService by di<ProfileService>()
 
     fun parseVideoIdFromUrl(str: String): String? {
-        return service.parseVideoId(str)
+        return videoService.parseVideoId(str)
     }
 
     fun loadVideoInfoAsync(videoId: String): Deferred<VideoDetails?> {
         return GlobalScope.async(Dispatchers.IO) {
-            service.videoInfo(videoId)
+            videoService.videoInfo(videoId)
         }
     }
 
     fun loadPlaylistInfoAsync(playlistId: String): Deferred<PlaylistInfo?> {
         return GlobalScope.async(Dispatchers.IO) {
-            service.playlistInfo(playlistId)
+            videoService.playlistInfo(playlistId)
         }
     }
 
     fun downloadVideoAsync(target: Path, video: VideoDetails, op: DownloadOption): DownloadTask {
         return executeDownloadTask(target, video) { ch ->
-            service.downloadFromYoutube(target, op, ch)
+            videoService.downloadFromYoutube(target, op, ch)
         }
     }
 
@@ -73,5 +74,13 @@ class YoutubeVideoController : Controller() {
             job.cancel()
         }
         return task
+    }
+
+    fun lastSaveDir(): Path {
+        return profileService.getLastUploadDir()
+    }
+
+    fun lastSaveDir(dir: Path) {
+        profileService.saveLastUploadDir(dir)
     }
 }
