@@ -1,13 +1,17 @@
+import org.gradle.kotlin.dsl.register
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 
 group = "io.averkhoglyad"
-version = "1.0.3"
+version = "1.0.4"
 
 val targetJvmVersion = JavaVersion.VERSION_17.toString()
 
 plugins {
     application
+
     kotlin("jvm") version "1.9.25"
+    kotlin("plugin.serialization") version "1.9.25"
+
     id("org.openjfx.javafxplugin") version "0.0.13"
     id("io.spring.dependency-management") version "1.1.0"
     id("org.panteleyev.jpackageplugin") version "1.5.2"
@@ -37,24 +41,24 @@ javafx {
     modules("javafx.controls", "javafx.graphics", "javafx.swing")
 }
 
-task("copyDependencies", Copy::class) {
-    from(configurations.runtimeClasspath).into("$buildDir/jars")
+tasks.register<Copy>("copyDependencies") {
+    from(configurations.runtimeClasspath).into("${layout.buildDirectory}/jars")
 }
 
-task("copyJar", Copy::class) {
-    from(tasks.jar).into("$buildDir/jars")
+tasks.register<Copy>("copyJar") {
+    from(tasks.jar).into("${layout.buildDirectory}/jars")
 }
 
-task("deleteDist", Copy::class) {
-    from(tasks.jar).into("$buildDir/jars")
-    delete("$buildDir/dist")
+tasks.register<Copy>("deleteDist") {
+    from(tasks.jar).into("${layout.buildDirectory}/jars")
+    delete("${layout.buildDirectory}/dist")
 }
 
 tasks.jpackage {
     dependsOn("build", "copyDependencies", "copyJar", "deleteDist")
 
-    input  = "$buildDir/jars"
-    destination = "$buildDir/dist"
+    input  = "${layout.buildDirectory}/jars"
+    destination = "${layout.buildDirectory}/dist"
 
     appName = "TubeLoader"
     vendor = "a.v.verkhoglyad"
@@ -83,6 +87,7 @@ dependencyManagement {
     imports {
         mavenBom("org.apache.logging.log4j:log4j-bom:2.24.1")
         mavenBom("org.jetbrains.kotlinx:kotlinx-coroutines-bom:1.9.0")
+        mavenBom("org.jetbrains.kotlinx:kotlinx-serialization-bom:1.6.3")
     }
 }
 
@@ -91,12 +96,15 @@ dependencies {
     implementation(kotlin("stdlib-jdk8"))
 //    implementation(kotlin("reflect"))
 
+    implementation("org.jetbrains.kotlinx:kotlinx-datetime:0.6.1")
+    implementation("org.jetbrains.kotlinx:kotlinx-serialization-json")
+
     // Coroutines
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-jdk8")
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-javafx")
 
     // Video/Audio
-    implementation("com.github.sealedtx:java-youtube-downloader:3.2.8")
+    implementation("com.github.sealedtx:java-youtube-downloader:3.3.1")
     implementation("ws.schild:jave-core:3.5.0")
     implementation("ws.schild:jave-nativebin-win64:3.5.0")
 //    implementation("ws.schild:jave-nativebin-osx64:3.5.0")

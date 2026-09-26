@@ -1,5 +1,6 @@
 package io.averkhoglyad.tubeloader
 
+import com.github.kiulian.downloader.Config
 import com.github.kiulian.downloader.YoutubeDownloader
 import io.averkhoglyad.tubeloader.layout.MainLayout
 import io.averkhoglyad.tubeloader.service.ProfileService

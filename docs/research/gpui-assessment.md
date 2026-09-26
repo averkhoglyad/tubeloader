@@ -2,7 +2,7 @@
 
 Investigation of [gpui](https://github.com/zed-industries/zed/tree/main/crates/gpui) (Zed Industries' UI framework) as a GUI candidate for Tubeloader. Feeds wayfinder ticket `etc/issues/stack-decision/issues/01-gpui-research.md`. Each claim cites a primary source.
 
-Context: Tubeloader core is Kotlin/JVM headless; GUI choice is between Compose Desktop (same language) and Rust+gpui (separate language, needs IPC). Win64-first, GPL-3.0.
+Context: Tubeloader core is Kotlin/JVM headless; GUI choice is between Compose Desktop (same language) and Rust+gpui (separate language, needs IPC). Win64-first, Apache-2.0.
 
 ## 1. API and paradigm
 
@@ -22,7 +22,7 @@ Reactivity: render is called per-frame on the root view; entities notify observe
 
 **Apache-2.0** ([Cargo.toml `license = "Apache-2.0"`](https://github.com/zed-industries/zed/blob/main/crates/gpui/Cargo.toml); confirmed [lib.rs](https://lib.rs/crates/gpui)).
 
-Apache-2.0 is a permissive license compatible with GPL-3.0: Apache-2.0 code may be included in a GPL-3.0 project (one-directional; the combined work becomes GPL-3.0). No conflict for Tubeloader.
+Apache-2.0 is the same license Tubeloader itself ships under, so no compatibility question arises.
 
 ## 3. Cross-platform
 
@@ -89,11 +89,11 @@ Sources: [lib.rs egui](https://lib.rs/crates/egui), [lib.rs iced](https://lib.rs
 - **egui:** easiest, largest Rust GUI, but non-native and breaking changes common.
 - **iced:** Elm architecture, type-safe, experimental, MIT.
 - **Tauri:** not a Rust-native UI — uses web technologies for the frontend; largest ecosystem but introduces JS/HTML toolchain.
-- **Slint:** GPL-3.0-only (matches Tubeloader) or commercial; 1.x stable; DSL-based; supports embedded + desktop.
+- **Slint:** GPL-3.0-only or commercial; 1.x stable; DSL-based; supports embedded + desktop.
 
 ## Verdict for Tubeloader
 
-- **License:** OK — Apache-2.0 → GPL-3.0 is permitted.
+- **License:** OK — Apache-2.0, same as Tubeloader.
 - **Win64-first:** usable but still maturing; core Windows bugs being fixed in 2026.
 - **API stability:** high risk — pre-1.0, no semver, breaking changes expected, version tracking requires snapshot forks.
 - **IPC cost:** gpui is Rust; Tubeloader core is Kotlin/JVM. Choosing gpui adds a language boundary with no proven gpui↔JVM integration pattern (would need custom IPC, e.g., stdin/stdout JSON or sockets).

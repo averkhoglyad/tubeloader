@@ -2,6 +2,7 @@ package io.averkhoglyad.tubeloader.service
 
 import com.github.kiulian.downloader.YoutubeDownloader
 import com.github.kiulian.downloader.downloader.YoutubeProgressCallback
+import com.github.kiulian.downloader.downloader.client.ClientType
 import com.github.kiulian.downloader.downloader.request.RequestPlaylistInfo
 import com.github.kiulian.downloader.downloader.request.RequestVideoInfo
 import com.github.kiulian.downloader.downloader.request.RequestVideoStreamDownload
