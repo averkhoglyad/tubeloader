@@ -24,7 +24,7 @@ Single-context:
 │   │   └── 0001-<decision>.md
 │   ├── agents/          ← конфиг этих навыков
 │   └── research/        ← отчёты исследований
-└── src/
+└── core/
 ```
 
 Тикеты и спеки в раскладку домена не входят: спека — `docs/<feature>/spec.md` ([specs.md](specs.md)),
