@@ -14,6 +14,7 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import java.nio.file.Path
 
 private val videoIds = Arb.string(1..12)
 private val inputs = Arb.string(1..24)
@@ -31,9 +32,10 @@ private class FacadeWorld(
 private fun TestScope.facadeWorld(
     adapters: List<FakeSourceAdapter> = listOf(FakeSourceAdapter()),
     mediaTool: FakeMediaTool = FakeMediaTool(),
+    initialConfig: AppConfig = AppConfig(),
 ): FacadeWorld {
     val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-    val facade = CoreFacade(adapters, mediaTool, scope)
+    val facade = CoreFacade(adapters, mediaTool, initialConfig, scope)
     val snapshots = mutableListOf<Map<TaskId, DownloadState>>()
     scope.launch { facade.downloads.collect { snapshots += it } }
     return FacadeWorld(adapters, mediaTool, facade, snapshots)
@@ -359,6 +361,42 @@ class CoreFacadeTest : FreeSpec({
                 // then
                 world.facade.downloads.value[cancelled] shouldBe DownloadState.Cancelled
                 world.facade.downloads.value[survivor] shouldBe DownloadState.Completed
+            }
+        }
+    }
+
+    "setConfig" - {
+        "exposes the initial config on the StateFlow" {
+            runTest {
+                // given
+                val initial = AppConfig(
+                    maxParallelDownloads = 2,
+                    defaultTargetDir = Path.of("D:/vid"),
+                )
+                val world = facadeWorld(initialConfig = initial)
+
+                // when
+                val actual = world.facade.config.value
+
+                // then
+                actual shouldBe initial
+            }
+        }
+
+        "replaces the config in runtime" {
+            runTest {
+                // given
+                val world = facadeWorld()
+                val updated = AppConfig(
+                    maxParallelDownloads = 5,
+                    defaultTargetDir = Path.of("E:/media"),
+                )
+
+                // when
+                world.facade.setConfig(updated)
+
+                // then
+                world.facade.config.value shouldBe updated
             }
         }
     }

@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.update
 class CoreFacade(
     private val adapters: List<SourceAdapter>,
     private val mediaTool: MediaTool,
+    initialConfig: AppConfig = AppConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
 ) {
     private val sources: List<Source> = adapters.mapIndexed { index, adapter ->
@@ -24,6 +25,9 @@ class CoreFacade(
 
     private val _downloads = MutableStateFlow<Map<TaskId, DownloadState>>(emptyMap())
     val downloads: StateFlow<Map<TaskId, DownloadState>> = _downloads.asStateFlow()
+
+    private val _config = MutableStateFlow(initialConfig)
+    val config: StateFlow<AppConfig> = _config.asStateFlow()
 
     private val dispatcher = DownloadDispatcher(scope, mediaTool, ::transition)
 
@@ -81,6 +85,10 @@ class CoreFacade(
 
     fun cancel(taskId: TaskId) {
         dispatcher.cancel(taskId)
+    }
+
+    fun setConfig(config: AppConfig) {
+        _config.value = config
     }
 
     private fun transition(taskId: TaskId, state: DownloadState) {

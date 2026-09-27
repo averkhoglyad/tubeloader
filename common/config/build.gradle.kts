@@ -11,16 +11,12 @@ kotlin {
 }
 
 dependencies {
-    implementation(libs.kotlinx.coroutines.core)
-    implementation(project(":common:config"))
+    implementation(libs.ktoml.core)
+    implementation(libs.ktoml.file)
 
     testImplementation(libs.kotest.runner.junit6)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotest.property)
-    testImplementation(libs.mockk)
-    testImplementation(libs.kotlinx.coroutines.test)
-    testImplementation(testFixtures(project))
-    testImplementation(testFixtures(project(":common:config")))
     testRuntimeOnly(libs.junit.platform.launcher)
 }
 
