@@ -4,12 +4,12 @@ import java.nio.file.Path
 
 enum class DownloadCapability { Delegate, Native, ResolveOnly }
 
-sealed interface ParseUrlResult {
-    data class Supported(val id: String) : ParseUrlResult
+sealed interface FindResult {
+    data class Found(val id: String) : FindResult
 
-    data object Unsupported : ParseUrlResult
+    data object Unsupported : FindResult
 
-    data object NotFound : ParseUrlResult
+    data object NotFound : FindResult
 }
 
 sealed interface LoadMetaResult {
@@ -21,7 +21,9 @@ sealed interface LoadMetaResult {
 interface SourceAdapter {
     val capability: DownloadCapability
 
-    suspend fun parseUrl(url: String): ParseUrlResult
+    val displayName: String
+
+    suspend fun find(input: String): FindResult
 
     suspend fun loadMeta(id: String): LoadMetaResult
 
