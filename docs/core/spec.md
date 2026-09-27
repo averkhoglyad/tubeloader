@@ -79,8 +79,8 @@ URL по декларированным адаптером шаблонам. С�
 
 **Контракт SourceAdapter.** Единый интерфейс, никакой трёхконтрактной схемы. Операции:
 
-- разбор URL → `Supported(id)` | `Unsupported` | `NotFound`: отдельные исходы, не исключения;
-- загрузка метаданных по идентификатору → `NotFound` | `VideoMeta`: исхода `Unsupported` тут нет,
+- разбор URL → `FindResult.Found(id)` | `Unsupported` | `NotFound`: отдельные исходы, не исключения;
+- загрузка метаданных по идентификатору → `NotFound` | `Found(VideoMeta)`: исхода `Unsupported` тут нет,
   так как поддержка уже определена на разборе URL;
 - `downloadVideo(id, quality, targetPath)` и `downloadAudio(id, quality, targetPath)`: отдельные
   операции, а не один вызов с флагом вида.
