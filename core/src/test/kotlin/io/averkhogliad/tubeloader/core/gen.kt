@@ -30,8 +30,18 @@ fun Arb.Companion.videoMetas(
     qualities: Gen<List<Quality>> = Arb.list(Arb.qualities(), 1..3),
 ): Arb<VideoMeta> = Arb.bind(ids, titles, authors, durations, thumbnails, qualities, ::VideoMeta)
 
+fun Arb.Companion.relativePaths(
+    names: Arb<String> = Arb.string(1..10, Codepoint.alphanumeric()),
+): Arb<Path> = names.map { Path.of("$it.mp4") }
+
 fun Arb.Companion.downloadRequests(
+    targetDirPath: Path,
     ids: Gen<String> = Arb.string(1..12),
     qualities: Gen<Quality> = Arb.qualities(),
-    targetPaths: Gen<Path> = Arb.string(1..10, Codepoint.alphanumeric()).map { Path.of(it) },
-): Arb<DownloadRequest> = Arb.bind(ids, qualities, targetPaths, ::DownloadRequest)
+    targetPaths: Arb<Path> = Arb.relativePaths(),
+): Arb<DownloadRequest> = Arb.bind(
+    ids,
+    qualities,
+    targetPaths.map { targetDirPath.resolve(it) },
+    ::DownloadRequest,
+)

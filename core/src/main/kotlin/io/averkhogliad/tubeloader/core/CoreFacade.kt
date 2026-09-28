@@ -13,6 +13,7 @@ class CoreFacade(
     private val mediaTool: MediaTool,
     initialConfig: AppConfig = AppConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
+    taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
 ) {
     private val sources: List<Source> = adapters.mapIndexed { index, adapter ->
         Source(SourceId(index), adapter.displayName)
@@ -29,7 +30,7 @@ class CoreFacade(
     private val _config = MutableStateFlow(initialConfig)
     val config: StateFlow<AppConfig> = _config.asStateFlow()
 
-    private val dispatcher = DownloadDispatcher(scope, mediaTool, ::transition)
+    private val dispatcher = DownloadDispatcher(scope, mediaTool, ::transition, taskIdGenerator)
 
     suspend fun findByUrl(input: String): ResolveResult {
         val matches = mutableListOf<Pair<Source, String>>()
@@ -72,19 +73,26 @@ class CoreFacade(
     fun enqueue(video: ResolveResult.Resolved, request: DownloadRequest): TaskId {
         val adapter = adaptersBySourceId[video.source.id]
             ?: error("Unknown source: ${video.source.id}")
-        return dispatcher.submit {
+        if (request.targetPath.parent == null) {
+            error("targetPath must include a parent directory: ${request.targetPath}")
+        }
+        return dispatcher.submit(request.targetPath) { partPath ->
             when (request.quality.kind) {
                 MediaKind.Video ->
-                    adapter.downloadVideo(video.videoId, request.quality, request.targetPath)
+                    adapter.downloadVideo(video.videoId, request.quality, partPath)
 
                 MediaKind.Audio ->
-                    adapter.downloadAudio(video.videoId, request.quality, request.targetPath)
+                    adapter.downloadAudio(video.videoId, request.quality, partPath)
             }
         }
     }
 
     fun cancel(taskId: TaskId) {
         dispatcher.cancel(taskId)
+    }
+
+    fun confirmOverwrite(taskId: TaskId, overwrite: Boolean) {
+        dispatcher.confirmOverwrite(taskId, overwrite)
     }
 
     fun setConfig(config: AppConfig) {

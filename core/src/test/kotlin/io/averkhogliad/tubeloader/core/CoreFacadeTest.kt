@@ -3,45 +3,33 @@ package io.averkhogliad.tubeloader.core
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FreeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.constant
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
-import kotlinx.coroutines.CompletableDeferred
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.ExperimentalCoroutinesApi
-import kotlinx.coroutines.launch
+import kotlinx.coroutines.*
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
+import java.nio.file.Files
 import java.nio.file.Path
+import kotlin.io.path.ExperimentalPathApi
+import kotlin.io.path.deleteRecursively
+import kotlin.time.Duration.Companion.seconds
 
 private val videoIds = Arb.string(1..12)
 private val inputs = Arb.string(1..24)
 
-private class FacadeWorld(
-    val adapters: List<FakeSourceAdapter>,
-    val mediaTool: FakeMediaTool,
-    val facade: CoreFacade,
-    private val snapshots: List<Map<TaskId, DownloadState>>,
-) {
-    fun observedStates(taskId: TaskId): List<DownloadState> = snapshots.mapNotNull { it[taskId] }
-}
-
-@OptIn(ExperimentalCoroutinesApi::class)
-private fun TestScope.facadeWorld(
-    adapters: List<FakeSourceAdapter> = listOf(FakeSourceAdapter()),
-    mediaTool: FakeMediaTool = FakeMediaTool(),
-    initialConfig: AppConfig = AppConfig(),
-): FacadeWorld {
-    val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-    val facade = CoreFacade(adapters, mediaTool, initialConfig, scope)
-    val snapshots = mutableListOf<Map<TaskId, DownloadState>>()
-    scope.launch { facade.downloads.collect { snapshots += it } }
-    return FacadeWorld(adapters, mediaTool, facade, snapshots)
-}
-
 class CoreFacadeTest : FreeSpec({
+
+    val tempDir = Files.createTempDirectory("tubeloader-test")
+
+    afterSpec {
+        @OptIn(ExperimentalPathApi::class)
+        tempDir.deleteRecursively()
+    }
 
     "findByUrl" - {
         "returns Resolved with the id and source when one adapter claims the input" {
@@ -217,7 +205,7 @@ class CoreFacadeTest : FreeSpec({
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                 val release = CompletableDeferred<Unit>()
                 world.adapters.single().onDownload = { release.await() }
-                val request = Arb.downloadRequests(ids = Arb.constant(videoId)).next()
+                val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
                 val taskId = world.facade.enqueue(resolved, request)
@@ -233,20 +221,23 @@ class CoreFacadeTest : FreeSpec({
             }
         }
 
-        "passes the request down to the adapter" {
+        "passes the request down to the adapter with the core-issued partial path" {
             runTest {
                 // given
                 val videoId = videoIds.next()
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                val request = Arb.downloadRequests(ids = Arb.constant(videoId)).next()
+                val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
-                world.facade.enqueue(resolved, request)
+                val taskId = world.facade.enqueue(resolved, request)
 
                 // then
-                world.adapters.single().downloaded.single() shouldBe request
+                val passed = world.adapters.single().downloaded.single()
+                passed.quality shouldBe request.quality
+                passed.targetPath shouldNotBe request.targetPath
+                passed.targetPath.parent shouldBe request.targetPath.parent
             }
         }
 
@@ -257,11 +248,12 @@ class CoreFacadeTest : FreeSpec({
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                val request = Arb.downloadRequests(ids = Arb.constant(videoId)).next()
+                val firstRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                val secondRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
-                val first = world.facade.enqueue(resolved, request)
-                val second = world.facade.enqueue(resolved, request)
+                val first = world.facade.enqueue(resolved, firstRequest)
+                val second = world.facade.enqueue(resolved, secondRequest)
 
                 // then
                 world.mediaTool.initializeCalls shouldBe 1
@@ -278,7 +270,7 @@ class CoreFacadeTest : FreeSpec({
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 world.adapters.single().onDownload = { error("adapter broke") }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                val request = Arb.downloadRequests(ids = Arb.constant(videoId)).next()
+                val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
                 val taskId = world.facade.enqueue(resolved, request)
@@ -297,13 +289,147 @@ class CoreFacadeTest : FreeSpec({
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val source = world.facade.availableSources.single()
                 val resolved = world.facade.findById(source.id, videoId) as ResolveResult.Resolved
-                val request = Arb.downloadRequests(ids = Arb.constant(videoId)).next()
+                val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
                 val taskId = world.facade.enqueue(resolved, request)
 
                 // then
                 world.facade.downloads.value[taskId] shouldBe DownloadState.Completed
+            }
+        }
+
+        "staging" - {
+            "produces the final file atomically and leaves no partial behind" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState.Completed
+                    Files.exists(target) shouldBe true
+                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
+            }
+
+            "deletes the partial file when the adapter throws" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    world.adapters.single().onDownload = { error("adapter broke") }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    world.facade.downloads.value[taskId].shouldBeInstanceOf<DownloadState.Failed>()
+                    Files.exists(target) shouldBe false
+                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
+            }
+
+            "deletes the partial file when the task is cancelled" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { release.await() }
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // when
+                    world.facade.cancel(taskId)
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState.Cancelled
+                    Files.exists(target) shouldBe false
+                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
+            }
+        }
+
+        "overwrite confirmation" - {
+            "interrupts when the target file already exists before download starts" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+                    Files.createFile(target)
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    world.facade.downloads.value[taskId].shouldBeInstanceOf<DownloadState.Interrupted>()
+                }
+            }
+
+            "completes after the user confirms overwrite" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+                    Files.createFile(target)
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // when
+                    world.awaitState(taskId) { it is DownloadState.Interrupted }
+                    world.facade.confirmOverwrite(taskId, overwrite = true)
+
+                    // then
+                    world.awaitState(taskId) { it == DownloadState.Completed }
+                    world.facade.downloads.value[taskId] shouldBe DownloadState.Completed
+                }
+            }
+
+            "cancels and cleans up when the user declines overwrite" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+                    Files.createFile(target)
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // when
+                    world.awaitState(taskId) { it is DownloadState.Interrupted }
+                    world.facade.confirmOverwrite(taskId, overwrite = false)
+
+                    // then
+                    world.awaitState(taskId) { it == DownloadState.Cancelled }
+                    world.facade.downloads.value[taskId] shouldBe DownloadState.Cancelled
+                }
             }
         }
     }
@@ -319,7 +445,7 @@ class CoreFacadeTest : FreeSpec({
                 world.adapters.single().onDownload = { CompletableDeferred<Unit>().await() }
                 val taskId = world.facade.enqueue(
                     resolved,
-                    Arb.downloadRequests(ids = Arb.constant(videoId)).next(),
+                Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
                 )
 
                 // when
@@ -347,14 +473,14 @@ class CoreFacadeTest : FreeSpec({
                 }
                 val cancelled = world.facade.enqueue(
                     resolved,
-                    Arb.downloadRequests(ids = Arb.constant(videoId)).next(),
+                Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
                 )
                 firstStarted.await()
 
                 // when
                 val survivor = world.facade.enqueue(
                     resolved,
-                    Arb.downloadRequests(ids = Arb.constant(videoId)).next(),
+                Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
                 )
                 world.facade.cancel(cancelled)
 
@@ -401,3 +527,36 @@ class CoreFacadeTest : FreeSpec({
         }
     }
 })
+
+private class FacadeWorld(
+    val adapters: List<FakeSourceAdapter>,
+    val mediaTool: FakeMediaTool,
+    val facade: CoreFacade,
+    private val snapshots: List<Map<TaskId, DownloadState>>,
+) {
+    fun observedStates(taskId: TaskId): List<DownloadState> = snapshots.mapNotNull { it[taskId] }
+
+    suspend fun awaitState(taskId: TaskId, predicate: (DownloadState) -> Boolean) {
+        withTimeout(5.seconds) {
+            while (!predicate(facade.downloads.value[taskId] ?: return@withTimeout)) {
+                kotlinx.coroutines.yield()
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalCoroutinesApi::class)
+private fun TestScope.facadeWorld(
+    adapters: List<FakeSourceAdapter> = listOf(FakeSourceAdapter()),
+    mediaTool: FakeMediaTool = FakeMediaTool(),
+    initialConfig: AppConfig = AppConfig(),
+): FacadeWorld {
+    val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+    val facade = CoreFacade(adapters, mediaTool, initialConfig, scope)
+    val snapshots = mutableListOf<Map<TaskId, DownloadState>>()
+    scope.launch { facade.downloads.collect { snapshots += it } }
+    return FacadeWorld(adapters, mediaTool, facade, snapshots)
+}
+
+private fun leftoverFilesIn(dir: Path, expected: Path): List<Path> =
+    Files.newDirectoryStream(dir).use { entries -> entries.filter { it != expected } }

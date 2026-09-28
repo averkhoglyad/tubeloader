@@ -1,6 +1,5 @@
 package io.averkhogliad.tubeloader.core
 
-import io.averkhogliad.tubeloader.config.Config
 import io.averkhogliad.tubeloader.config.mapConfig
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FreeSpec
