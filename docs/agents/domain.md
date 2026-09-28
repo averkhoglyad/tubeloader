@@ -27,7 +27,7 @@ Single-context:
 └── core/
 ```
 
-Тикеты и спеки в раскладку домена не входят: спека — `docs/<feature>/spec.md` ([specs.md](specs.md)),
+Тикеты и спеки в раскладку домена не входят: спека — `docs/features/<feature>/spec.md` ([specs.md](specs.md)),
 тикеты — `etc/issues/` ([issue-tracker.md](issue-tracker.md)).
 
 ## Использовать словарь глоссария

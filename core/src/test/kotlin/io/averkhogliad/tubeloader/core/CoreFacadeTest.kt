@@ -2,11 +2,14 @@ package io.averkhogliad.tubeloader.core
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FreeSpec
+import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
+import io.kotest.matchers.string.shouldContain
 import io.kotest.matchers.types.shouldBeInstanceOf
 import io.kotest.property.Arb
 import io.kotest.property.arbitrary.constant
+import io.kotest.property.arbitrary.long
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import kotlinx.coroutines.*
@@ -204,7 +207,7 @@ class CoreFacadeTest : FreeSpec({
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                 val release = CompletableDeferred<Unit>()
-                world.adapters.single().onDownload = { release.await() }
+                world.adapters.single().onDownload = { _, _ -> release.await() }
                 val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
@@ -214,10 +217,10 @@ class CoreFacadeTest : FreeSpec({
 
                 // then
                 statesWhileDownloading shouldBe listOf(
-                    DownloadState.Queued,
-                    DownloadState.Downloading(Progress.Indeterminate),
+                    DownloadState(DownloadStatus.Queued),
+                    DownloadState(DownloadStatus.Downloading),
                 )
-                world.observedStates(taskId).last() shouldBe DownloadState.Completed
+                world.observedStates(taskId).last() shouldBe DownloadState(DownloadStatus.Completed)
             }
         }
 
@@ -257,8 +260,8 @@ class CoreFacadeTest : FreeSpec({
 
                 // then
                 world.mediaTool.initializeCalls shouldBe 1
-                world.facade.downloads.value[first] shouldBe DownloadState.Completed
-                world.facade.downloads.value[second] shouldBe DownloadState.Completed
+                world.facade.downloads.value[first] shouldBe DownloadState(DownloadStatus.Completed)
+                world.facade.downloads.value[second] shouldBe DownloadState(DownloadStatus.Completed)
             }
         }
 
@@ -268,7 +271,7 @@ class CoreFacadeTest : FreeSpec({
                 val videoId = videoIds.next()
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
-                world.adapters.single().onDownload = { error("adapter broke") }
+                world.adapters.single().onDownload = { _, _ -> error("adapter broke") }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                 val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
@@ -276,7 +279,7 @@ class CoreFacadeTest : FreeSpec({
                 val taskId = world.facade.enqueue(resolved, request)
 
                 // then
-                val failed = world.facade.downloads.value[taskId] as DownloadState.Failed
+                val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
                 failed.error.message shouldBe "adapter broke"
             }
         }
@@ -295,7 +298,52 @@ class CoreFacadeTest : FreeSpec({
                 val taskId = world.facade.enqueue(resolved, request)
 
                 // then
-                world.facade.downloads.value[taskId] shouldBe DownloadState.Completed
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Completed)
+            }
+        }
+
+        "task id allocation" - {
+            "keeps both tasks when the generator repeats an occupied id" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val generated = listOf(TaskId(1), TaskId(1), TaskId(2))
+                    var index = 0
+                    val world = facadeWorld(taskIdGenerator = TaskIdGenerator { generated[index++] })
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val firstRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    val secondRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+
+                    // when
+                    val first = world.facade.enqueue(resolved, firstRequest)
+                    val second = world.facade.enqueue(resolved, secondRequest)
+
+                    // then
+                    first shouldBe TaskId(1)
+                    second shouldBe TaskId(2)
+                    world.facade.downloads.value[first] shouldBe DownloadState(DownloadStatus.Completed)
+                    world.facade.downloads.value[second] shouldBe DownloadState(DownloadStatus.Completed)
+                }
+            }
+
+            "fails when the generator keeps returning an occupied id" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld(taskIdGenerator = TaskIdGenerator { TaskId(1) })
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val firstRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    world.facade.enqueue(resolved, firstRequest)
+
+                    // when
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    val failure = shouldThrow<IllegalStateException> { world.facade.enqueue(resolved, request) }
+
+                    // then
+                    failure.message shouldContain "occupied id"
+                }
             }
         }
 
@@ -315,7 +363,7 @@ class CoreFacadeTest : FreeSpec({
                     val taskId = world.facade.enqueue(resolved, request)
 
                     // then
-                    world.facade.downloads.value[taskId] shouldBe DownloadState.Completed
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Completed)
                     Files.exists(target) shouldBe true
                     leftoverFilesIn(target.parent, target) shouldBe emptyList()
                 }
@@ -327,7 +375,7 @@ class CoreFacadeTest : FreeSpec({
                     val videoId = videoIds.next()
                     val world = facadeWorld()
                     world.adapters.single().onFind = { FindResult.Found(videoId) }
-                    world.adapters.single().onDownload = { error("adapter broke") }
+                    world.adapters.single().onDownload = { _, _ -> error("adapter broke") }
                     val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                     val dir = Files.createTempDirectory(tempDir, "staging")
                     val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
@@ -337,7 +385,7 @@ class CoreFacadeTest : FreeSpec({
                     val taskId = world.facade.enqueue(resolved, request)
 
                     // then
-                    world.facade.downloads.value[taskId].shouldBeInstanceOf<DownloadState.Failed>()
+                    world.facade.downloads.value.getValue(taskId).status.shouldBeInstanceOf<DownloadStatus.Failed>()
                     Files.exists(target) shouldBe false
                     leftoverFilesIn(target.parent, target) shouldBe emptyList()
                 }
@@ -351,7 +399,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onFind = { FindResult.Found(videoId) }
                     val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                     val release = CompletableDeferred<Unit>()
-                    world.adapters.single().onDownload = { release.await() }
+                    world.adapters.single().onDownload = { _, _ -> release.await() }
                     val dir = Files.createTempDirectory(tempDir, "staging")
                     val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
                     val target = request.targetPath
@@ -361,7 +409,7 @@ class CoreFacadeTest : FreeSpec({
                     world.facade.cancel(taskId)
 
                     // then
-                    world.facade.downloads.value[taskId] shouldBe DownloadState.Cancelled
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
                     Files.exists(target) shouldBe false
                     leftoverFilesIn(target.parent, target) shouldBe emptyList()
                 }
@@ -384,7 +432,7 @@ class CoreFacadeTest : FreeSpec({
                     val taskId = world.facade.enqueue(resolved, request)
 
                     // then
-                    world.facade.downloads.value[taskId].shouldBeInstanceOf<DownloadState.Interrupted>()
+                    world.facade.downloads.value.getValue(taskId).status.shouldBeInstanceOf<DownloadStatus.Interrupted>()
                 }
             }
 
@@ -401,12 +449,12 @@ class CoreFacadeTest : FreeSpec({
                     val taskId = world.facade.enqueue(resolved, request)
 
                     // when
-                    world.awaitState(taskId) { it is DownloadState.Interrupted }
+                    world.awaitState(taskId) { it.status is DownloadStatus.Interrupted }
                     world.facade.confirmOverwrite(taskId, overwrite = true)
 
                     // then
-                    world.awaitState(taskId) { it == DownloadState.Completed }
-                    world.facade.downloads.value[taskId] shouldBe DownloadState.Completed
+                    world.awaitState(taskId) { it.status == DownloadStatus.Completed }
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Completed)
                 }
             }
 
@@ -423,12 +471,295 @@ class CoreFacadeTest : FreeSpec({
                     val taskId = world.facade.enqueue(resolved, request)
 
                     // when
-                    world.awaitState(taskId) { it is DownloadState.Interrupted }
+                    world.awaitState(taskId) { it.status is DownloadStatus.Interrupted }
                     world.facade.confirmOverwrite(taskId, overwrite = false)
 
                     // then
-                    world.awaitState(taskId) { it == DownloadState.Cancelled }
-                    world.facade.downloads.value[taskId] shouldBe DownloadState.Cancelled
+                    world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+                }
+            }
+        }
+
+        "progress" - {
+            "reports Determinate for absolute source progress" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val absolute = Arb.absoluteProgresses().next()
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(absolute)
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Downloading,
+                        progress = Progress.Determinate(absolute.processed, absolute.total),
+                    )
+                    release.complete(Unit)
+                }
+            }
+
+            "reports Determinate for fractional source progress" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val fraction = Arb.fractions().next()
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(fraction)
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    val state = world.facade.downloads.value.getValue(taskId)
+                    state.status shouldBe DownloadStatus.Downloading
+                    val determinate = state.progress as Progress.Determinate
+                    (determinate.current.toDouble() / determinate.total) shouldBe (fraction.ratio plusOrMinus 0.001)
+                    release.complete(Unit)
+                }
+            }
+
+            "reports Indeterminate when the source has no measurable progress" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(SourceProgress.Indeterminate)
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Downloading,
+                        progress = Progress.Indeterminate,
+                    )
+                    release.complete(Unit)
+                }
+            }
+
+            "falls back to Indeterminate when absolute progress has zero total" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val processed = Arb.long(0L..1_000_000L).next()
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(SourceProgress.Absolute(processed, total = 0L))
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Downloading,
+                        progress = Progress.Indeterminate,
+                    )
+                    release.complete(Unit)
+                }
+            }
+
+            "falls back to Indeterminate when processed exceeds total" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val total = Arb.long(1L..1_000_000L).next()
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(SourceProgress.Absolute(total + 1, total))
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Downloading,
+                        progress = Progress.Indeterminate,
+                    )
+                    release.complete(Unit)
+                }
+            }
+
+            "falls back to Indeterminate when the fraction is outside zero to one" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(SourceProgress.Fraction(Double.POSITIVE_INFINITY))
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Downloading,
+                        progress = Progress.Indeterminate,
+                    )
+                    release.complete(Unit)
+                }
+            }
+
+            "falls back to Indeterminate when a finite fraction exceeds one" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(SourceProgress.Fraction(5.0))
+                        reported.complete(Unit)
+                        release.await()
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Downloading,
+                        progress = Progress.Indeterminate,
+                    )
+                    release.complete(Unit)
+                }
+            }
+
+            "keeps the reported progress when the task interrupts for confirmation" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+                    val absolute = Arb.absoluteProgresses().next()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        onProgress(absolute)
+                        Files.createFile(request.targetPath)
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    world.facade.downloads.value[taskId] shouldBe DownloadState(
+                        status = DownloadStatus.Interrupted(PendingInteraction.OverwriteConfirmation(request.targetPath)),
+                        progress = Progress.Determinate(absolute.processed, absolute.total),
+                    )
+                }
+            }
+
+            "updates progress without changing the status when a late callback arrives" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val absolute = Arb.absoluteProgresses().next()
+                    lateinit var lateProgress: (SourceProgress) -> Unit
+                    val reported = CompletableDeferred<Unit>()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { _, onProgress ->
+                        lateProgress = onProgress
+                        onProgress(absolute)
+                        reported.complete(Unit)
+                        release.await()
+                    }
+                    val taskId = world.facade.enqueue(
+                        resolved,
+                        Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                    )
+                    reported.await()
+
+                    // when
+                    release.complete(Unit)
+                    world.awaitState(taskId) { it.status == DownloadStatus.Completed }
+                    lateProgress(SourceProgress.Fraction(0.5))
+
+                    // then
+                    val state = world.facade.downloads.value.getValue(taskId)
+                    state.status shouldBe DownloadStatus.Completed
+                    state.progress shouldBe Progress.Determinate(500L, 1000L)
                 }
             }
         }
@@ -442,7 +773,7 @@ class CoreFacadeTest : FreeSpec({
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                world.adapters.single().onDownload = { CompletableDeferred<Unit>().await() }
+                world.adapters.single().onDownload = { _, _ -> CompletableDeferred<Unit>().await() }
                 val taskId = world.facade.enqueue(
                     resolved,
                 Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
@@ -452,7 +783,7 @@ class CoreFacadeTest : FreeSpec({
                 world.facade.cancel(taskId)
 
                 // then
-                world.facade.downloads.value[taskId] shouldBe DownloadState.Cancelled
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
             }
         }
 
@@ -465,7 +796,7 @@ class CoreFacadeTest : FreeSpec({
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                 val firstStarted = CompletableDeferred<Unit>()
                 var downloads = 0
-                world.adapters.single().onDownload = {
+                world.adapters.single().onDownload = { _, _ ->
                     if (downloads++ == 0) {
                         firstStarted.complete(Unit)
                         CompletableDeferred<Unit>().await()
@@ -485,8 +816,8 @@ class CoreFacadeTest : FreeSpec({
                 world.facade.cancel(cancelled)
 
                 // then
-                world.facade.downloads.value[cancelled] shouldBe DownloadState.Cancelled
-                world.facade.downloads.value[survivor] shouldBe DownloadState.Completed
+                world.facade.downloads.value[cancelled] shouldBe DownloadState(DownloadStatus.Cancelled)
+                world.facade.downloads.value[survivor] shouldBe DownloadState(DownloadStatus.Completed)
             }
         }
     }
@@ -550,9 +881,10 @@ private fun TestScope.facadeWorld(
     adapters: List<FakeSourceAdapter> = listOf(FakeSourceAdapter()),
     mediaTool: FakeMediaTool = FakeMediaTool(),
     initialConfig: AppConfig = AppConfig(),
+    taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
 ): FacadeWorld {
     val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
-    val facade = CoreFacade(adapters, mediaTool, initialConfig, scope)
+    val facade = CoreFacade(adapters, mediaTool, initialConfig, scope, taskIdGenerator)
     val snapshots = mutableListOf<Map<TaskId, DownloadState>>()
     scope.launch { facade.downloads.collect { snapshots += it } }
     return FacadeWorld(adapters, mediaTool, facade, snapshots)

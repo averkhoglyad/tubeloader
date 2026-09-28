@@ -2,22 +2,27 @@ package io.averkhogliad.tubeloader.core
 
 import java.nio.file.Path
 
-sealed interface DownloadState {
-    data object Queued : DownloadState
+data class DownloadState(
+    val status: DownloadStatus,
+    val progress: Progress = Progress.Indeterminate,
+)
 
-    data object LoadingMeta : DownloadState
+sealed interface DownloadStatus {
+    data object Queued : DownloadStatus
 
-    data class Downloading(val progress: Progress) : DownloadState
+    data object LoadingMeta : DownloadStatus
 
-    data object Finalizing : DownloadState
+    data object Downloading : DownloadStatus
 
-    data object Completed : DownloadState
+    data object Finalizing : DownloadStatus
 
-    data object Cancelled : DownloadState
+    data object Completed : DownloadStatus
 
-    data class Failed(val error: Throwable) : DownloadState
+    data object Cancelled : DownloadStatus
 
-    data class Interrupted(val pending: PendingInteraction) : DownloadState
+    data class Failed(val error: Throwable) : DownloadStatus
+
+    data class Interrupted(val pending: PendingInteraction) : DownloadStatus
 }
 
 sealed interface PendingInteraction {

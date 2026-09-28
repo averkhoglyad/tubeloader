@@ -82,8 +82,8 @@ URL по декларированным адаптером шаблонам. С�
 - разбор URL → `FindResult.Found(id)` | `Unsupported` | `NotFound`: отдельные исходы, не исключения;
 - загрузка метаданных по идентификатору → `NotFound` | `Found(VideoMeta)`: исхода `Unsupported` тут нет,
   так как поддержка уже определена на разборе URL;
-- `downloadVideo(id, quality, targetPath)` и `downloadAudio(id, quality, targetPath)`: отдельные
-  операции, а не один вызов с флагом вида.
+- `downloadVideo(id, quality, targetPath, onProgress)` и `downloadAudio(id, quality, targetPath, onProgress)`:
+  отдельные операции, а не один вызов с флагом вида; сырой прогресс приходит в `onProgress` колбеком.
 
 Capability-модель — через опрос адаптера: `Delegate` (адаптер скачивает сам), `Native` (скачивает
 общий пайплайн ядра), `ResolveOnly`. Роутинг — по декларированным адаптером URL-паттернам, без
@@ -92,15 +92,27 @@ Capability-модель — через опрос адаптера: `Delegate` (
 **Входные сценарии.** UI предусматривает оба входа: URL целиком и отдельно id плюс выбор источника
 из списка. Контракт обслуживает оба.
 
-**DownloadState.** Расширяемый sealed-набор состояний одной загрузки, отдаваемый как Flow. Набор
-покрывает жизненный цикл (ожидание, метаданные, скачивание, финализация, завершено, отменено,
-ошибка) и оставляет слот под состояния прерывания для проверок, требующих действия пользователя
-(например, cookies или сессия). Слот проектируется как часть механизма прерываний, а не как набор
-частных состояний под конкретный источник.
+**DownloadState.** Одна загрузка наблюдаема как пара независимых измерений: статус (фаза
+жизненного цикла) и прогресс (сколько выполнено). Набор статусов покрывает жизненный цикл
+(ожидание, метаданные, скачивание, финализация, завершено, отменено, ошибка) и оставляет слот под
+статусы прерывания для проверок, требующих действия пользователя (например, cookies или сессия).
+Слот проектируется как часть механизма прерываний, а не как набор частных статусов под конкретный
+источник. Прогресс не входит в конкретный статус и сохраняется между переходами: поздний колбек
+адаптера обновляет прогресс, но не меняет статус.
+
+**Распределение идентификатора задачи.** `TaskId` выделяется при постановке загрузки и
+резервируется в карте наблюдаемых состояний атомарно: занятый идентификатор (коллизия случайного
+генератора) не перезаписывает запись другой задачи, ядро берёт следующий. Исчерпание попыток —
+исключение, а не тихая подмена. Завершённые задачи остаются в карте, поэтому занятость
+проверяется по ней, а не только по активным задачам.
 
 **Progress.** Нормализованная мера продвижения: `Indeterminate` (прогресс неизвестен, например при
-перекодировании) или `Determinate(current, total)`. Адаптер отдаёт свои сырые форматы, ядро
-нормализует.
+перекодировании) или `Determinate(current, total)`. Адаптер отдаёт свой сырой формат типом
+`SourceProgress` (`Indeterminate`, `Absolute(processed, total)` — байты, сегменты, `Fraction(ratio)` —
+весовые доли двух потоков) через `onProgress`-колбек операции скачивания; ядро нормализует.
+Нормализация защищена от мусора на входе: `Absolute` с `total <= 0`, `processed` вне `0..total` и
+`Fraction` с нефинитным или выходящим за `0.0..1.0` значением дают `Indeterminate`, а не падение
+задачи и не деление на ноль в UI.
 
 **MediaTool.** Порт ядра для операций над медиафайлами: инициализация инструмента, запуск, прогресс.
 Параметры операции задаёт адаптер, потому что только адаптер знает, что делать: раздельные
@@ -156,9 +168,7 @@ ffmpeg с копированием потоков) переносятся как
 
 ## Testing Decisions
 
-Хороший тест проверяет внешнее поведение через публичный шов и не зависит от деталей реализации:
-никаких проверок приватных методов, никаких ассертов на структуру внутренних файлов staging, кроме
-наблюдаемого факта «в целевом каталоге нет полуфайлов».
+Общий стандарт написания тестов — `../../standards/testing.md`; здесь только швы этой фичи.
 
 Швы, в порядке предпочтения:
 
@@ -173,97 +183,8 @@ ffmpeg с копированием потоков) переносятся как
 3. **Порт MediaTool.** Фейк в тестах швов 1–2; настоящий инструмент — только в тестах адаптера, на
    маленьких медиафайлах, с проверкой прогресса и отмены.
 
-Стек тестов: kotest + mockk для unit-тестов, платформа JUnit6 (`useJUnitPlatform()` включён в
-`:core` тикетом 01). Предыдущий артефакт для тестов ядра — `FakeBackend` из
-`docs/research/report-1.md` §14; форма входа (детерминированные, программируемые сбои по классам
-ошибок) переносится.
-
-### Правила оформления тестов
-
-**Контекст — тестируемый метод.** Класс теста наследует `FreeSpec`. Первый уровень вложенности —
-тестируемый метод, второй и глубже — проверяемые кейсы этого метода. Один метод — один блок, кейсы
-не размазываются по классу. Имя кейса описывает наблюдаемое поведение, а не вызов; внутри кейса —
-секции `// given`, `// when`, `// then`.
-
-```kotlin
-class MailSendServiceTest : FreeSpec({
-    "send" - {
-        "throws IllegalArgumentException if no receiver email" { }
-        "creates MailMessage and pass to MailSender" { }
-    }
-})
-```
-
-Вложенность глубже двух уровней допустима, когда у метода есть осмысленные группы поведения.
-
-**Данные генерируются, а не выдумываются.** `Gen<T>` — тип параметра генератора, конкретные
-реализации — `Arb` (случайные значения) и `Exhaustive` (перебор). Генераторы живут в отдельном
-`gen.kt` рядом с тестами и оформляются как расширения `Arb.Companion`:
-
-```kotlin
-fun Arb.Companion.userEntities(
-    ids: Gen<UUID?> = Exhaustive.of(null),
-): Arb<UserEntity> = Arb.bind(ids, Arb.string()) { id, name -> UserEntity(id, name) }
-```
-
-Составные значения собираются через `Arb.bind(...)`, а не через `randomUUID()` и литералы; прогон —
-`checkAll(gen) { ... }`, один сэмпл — `gen.next()`. Жёсткие литералы остаются только там, где
-значение проверяется как ожидаемое, а не как вход.
-
-**Конфигурация kotest.** Класс конфига в kotest 6 ищется по fully qualified name, а не сканированием
-classpath, — сканирование выключено в самом фреймворке. Поэтому в `src/test/resources/kotest.properties`
-каждого тестового модуля может стоять только выбор конфига, а не отключение скана:
-
-```properties
-kotest.framework.config.fqn=<fqn>
-```
-
-Порядок резолвинга конфига в kotest 6: класс `io.kotest.provided.ProjectConfig`, затем FQN из
-`kotest.framework.config.fqn`, затем класс `ProjectConfig` в общем пакете всех тестов. Отдельного
-файла `kotest.properties` модулю достаточно, когда нужен именно явный FQN; `ProjectConfig` в общем
-пакете работает без всякой конфигурации.
-
-**Моки: query-методы против command-методов.** Разделение по роли метода, а не по типу класса.
-
-Query-метод возвращает значение: достаточно заглушить принимаемое и возвращаемое значение и
-проверить результат. Вызов такого метода **не верифицируется** — он средство, а не предмет
-проверки:
-
-```kotlin
-// правильно: заглушка + проверка результата
-val actual = service.load(id)
-actual shouldBe entity
-
-// неправильно: findById — query-метод, его вызов верифицировать не нужно
-verify { repository.findById(eventId) }
-```
-
-Command-метод меняет состояние системы: заглушка принимает любой аргумент, после вызова идёт
-`verify` с захватом, и захваченный реальный аргумент сравнивается с ожидаемым:
-
-```kotlin
-// правильно: перехват реального аргумента и сверка с ожидаемым
-val slot = slot<SimpleMailMessage>()
-verify { emailSender.send(capture(slot)) }
-slot.captured shouldBeSameInstanceAs mailMessageForSender
-
-// неправильно: проверка «факта вызова» без сверки того, что реально передано
-verify { emailSender.send(any()) }
-```
-
-Захваченный аргумент сверяется с ожидаемым значением, а не с тем же моком.
-
-**Очистка состояния — флоу-методами.** Моки и прочее состояние чистятся в `afterTest`, `afterEach`,
-`beforeTest`, `beforeSpec`, а не вручную в каждом кейсе:
-
-```kotlin
-class MailSendServiceTest : FreeSpec({
-    afterTest { clearAllMocks() }
-})
-```
-
-Ручная очистка внутри кейса — исключение, оправданное только когда тест проверяет поведение между
-вызовами.
+Предыдущий артефакт для тестов ядра — `FakeBackend` из `docs/research/report-1.md` §14; форма
+входа (детерминированные, программируемые сбои по классам ошибок) переносится.
 
 ## Out of Scope
 
@@ -292,24 +213,24 @@ class MailSendServiceTest : FreeSpec({
 - Поведение при существующем целевом файле: подтверждение выбрано как направление, конкретный диалог
   — в спеке фронтенда.
 
-Источники решений: `docs/research/report-1.md` (§4 контракт, §6 Rutube, §8 общий пайплайн, §14
+Источники решений: `../../research/report-1.md` (§4 контракт, §6 Rutube, §8 общий пайплайн, §14
 тестирование), `docs/research/report-2.md` (§3 слоистость, §4 домен, §6 пайплайн), `CONTEXT.md`
 (термины), `docs/adr/0001-kotlin-jvm-compose-desktop.md`, `docs/adr/0002-separate-presentation-layers.md`,
 `docs/adr/0003-download-queue-confinement.md`.
 
 ## Tickets
 
-- 00 — Архив референсов прототипа, снос, мультимодульный Gradle-скелет — `etc/issues/core/00-archive-prototype-and-multimodule-skeleton.md`
-- 01 — Модуль ядра + тестовый стек (blocked by 00) — `etc/issues/core/01-core-module-and-test-stack.md`
-- 02 — Фасад ядра, контракты, фейки (blocked by 01) — `etc/issues/core/02-facade-contracts-and-fakes.md`
-- 03 — Роутинг URL и исходы разбора (blocked by 02) — `etc/issues/core/03-url-routing-and-parse-outcomes.md`
-- 04 — Метаданные (blocked by 03) — `etc/issues/core/04-metadata.md`
-- 05 — Конфигурация: хранение и переопределение (blocked by 02) — `etc/issues/core/05-configuration.md`
-- 06 — Delegate-загрузка: staging и атомарная финализация (blocked by 02, 04) — `etc/issues/core/06-delegate-staging-atomic-finalization.md`
-- 07 — Нормализация прогресса (blocked by 06) — `etc/issues/core/07-progress-normalization.md`
-- 08 — Таксономия ошибок M1 (blocked by 06) — `etc/issues/core/08-error-taxonomy.md`
-- 09 — Отмена загрузки (blocked by 06) — `etc/issues/core/09-cancellation.md`
-- 10 — Общий Native-пайплайн (blocked by 06, 07) — `etc/issues/core/10-native-pipeline.md`
-- 11 — Contract-тесты на golden-фикстурах (blocked by 04, 07) — `etc/issues/core/11-contract-tests-golden-fixtures.md`
-- 12 — Очередь загрузок с лимитом параллелизма (blocked by 05, 06, 09) — `etc/issues/core/12-download-queue-and-parallelism.md`
-- 13 — Чистое завершение (blocked by 09, 12) — `etc/issues/core/13-clean-shutdown.md`
+- 00 — Архив референсов прототипа, снос, мультимодульный Gradle-скелет — `../../../etc/issues/core/00-archive-prototype-and-multimodule-skeleton.md`
+- 01 — Модуль ядра + тестовый стек (blocked by 00) — `../../../etc/issues/core/01-core-module-and-test-stack.md`
+- 02 — Фасад ядра, контракты, фейки (blocked by 01) — `../../../etc/issues/core/02-facade-contracts-and-fakes.md`
+- 03 — Роутинг URL и исходы разбора (blocked by 02) — `../../../etc/issues/core/03-url-routing-and-parse-outcomes.md`
+- 04 — Метаданные (blocked by 03) — `../../../etc/issues/core/04-metadata.md`
+- 05 — Конфигурация: хранение и переопределение (blocked by 02) — `../../../etc/issues/core/05-configuration.md`
+- 06 — Delegate-загрузка: staging и атомарная финализация (blocked by 02, 04) — `../../../etc/issues/core/06-delegate-staging-atomic-finalization.md`
+- 07 — Нормализация прогресса (blocked by 06) — `../../../etc/issues/core/07-progress-normalization.md`
+- 08 — Таксономия ошибок M1 (blocked by 06) — `../../../etc/issues/core/08-error-taxonomy.md`
+- 09 — Отмена загрузки (blocked by 06) — `../../../etc/issues/core/09-cancellation.md`
+- 10 — Общий Native-пайплайн (blocked by 06, 07) — `../../../etc/issues/core/10-native-pipeline.md`
+- 11 — Contract-тесты на golden-фикстурах (blocked by 04, 07) — `../../../etc/issues/core/11-contract-tests-golden-fixtures.md`
+- 12 — Очередь загрузок с лимитом параллелизма (blocked by 05, 06, 09) — `../../../etc/issues/core/12-download-queue-and-parallelism.md`
+- 13 — Чистое завершение (blocked by 09, 12) — `../../../etc/issues/core/13-clean-shutdown.md`

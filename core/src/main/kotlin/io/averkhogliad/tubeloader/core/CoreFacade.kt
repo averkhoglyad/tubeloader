@@ -30,7 +30,7 @@ class CoreFacade(
     private val _config = MutableStateFlow(initialConfig)
     val config: StateFlow<AppConfig> = _config.asStateFlow()
 
-    private val dispatcher = DownloadDispatcher(scope, mediaTool, ::transition, taskIdGenerator)
+    private val dispatcher = DownloadDispatcher(scope, mediaTool, ::register, ::transition, ::updateProgress, taskIdGenerator)
 
     suspend fun findByUrl(input: String): ResolveResult {
         val matches = mutableListOf<Pair<Source, String>>()
@@ -76,13 +76,13 @@ class CoreFacade(
         if (request.targetPath.parent == null) {
             error("targetPath must include a parent directory: ${request.targetPath}")
         }
-        return dispatcher.submit(request.targetPath) { partPath ->
+        return dispatcher.submit(request.targetPath) { partPath, onProgress ->
             when (request.quality.kind) {
                 MediaKind.Video ->
-                    adapter.downloadVideo(video.videoId, request.quality, partPath)
+                    adapter.downloadVideo(video.videoId, request.quality, partPath, onProgress)
 
                 MediaKind.Audio ->
-                    adapter.downloadAudio(video.videoId, request.quality, partPath)
+                    adapter.downloadAudio(video.videoId, request.quality, partPath, onProgress)
             }
         }
     }
@@ -99,7 +99,25 @@ class CoreFacade(
         _config.value = config
     }
 
-    private fun transition(taskId: TaskId, state: DownloadState) {
-        _downloads.update { it + (taskId to state) }
+    private fun register(taskId: TaskId): Boolean {
+        val registered = DownloadState(DownloadStatus.Queued)
+        while (true) {
+            val states = _downloads.value
+            if (taskId in states) return false
+            if (_downloads.compareAndSet(states, states + (taskId to registered))) return true
+        }
+    }
+
+    private fun transition(taskId: TaskId, status: DownloadStatus) {
+        _downloads.update { states ->
+            states + (taskId to DownloadState(status, states[taskId]?.progress ?: Progress.Indeterminate))
+        }
+    }
+
+    private fun updateProgress(taskId: TaskId, progress: Progress) {
+        _downloads.update { states ->
+            val current = states[taskId] ?: return@update states
+            states + (taskId to current.copy(progress = progress))
+        }
     }
 }

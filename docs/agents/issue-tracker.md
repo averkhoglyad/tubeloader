@@ -9,14 +9,14 @@
   блокеры первыми. Никогда не один общий файл на все тикеты.
 - Человеческий индекс — `etc/issues/INDEX.md`. Обязателен к обновлению при добавлении, изменении
   и смене статуса фичи или тикета. Агент читает статусы из шапок тикетов, индекс ему не нужен.
-- Спека — `docs/<feature>/spec.md`. См. [specs.md](specs.md).
+- Спека — `docs/features/<feature>/spec.md`. См. [specs.md](specs.md).
 
 ## Шапка тикета
 
 ```
 # NN: <Title>
 
-**Spec:** docs/<feature>/spec.md
+**Spec:** docs/features/<feature>/spec.md
 **Blocked by:** NN, NN | None (can start immediately)
 **Status:** ready-for-agent
 ```

@@ -9,7 +9,7 @@ class FakeSourceAdapter(
 
     var onFind: suspend (String) -> FindResult = { FindResult.Unsupported }
     var onLoadMeta: suspend (String) -> LoadMetaResult = { LoadMetaResult.NotFound }
-    var onDownload: suspend (DownloadRequest) -> Unit = {}
+    var onDownload: suspend (DownloadRequest, (SourceProgress) -> Unit) -> Unit = { _, _ -> }
 
     val downloaded = mutableListOf<DownloadRequest>()
 
@@ -17,14 +17,22 @@ class FakeSourceAdapter(
 
     override suspend fun loadMeta(id: String): LoadMetaResult = onLoadMeta(id)
 
-    override suspend fun downloadVideo(id: String, quality: Quality, targetPath: Path) =
-        download(DownloadRequest(id, quality, targetPath))
+    override suspend fun downloadVideo(
+        id: String,
+        quality: Quality,
+        targetPath: Path,
+        onProgress: (SourceProgress) -> Unit,
+    ) = download(DownloadRequest(id, quality, targetPath), onProgress)
 
-    override suspend fun downloadAudio(id: String, quality: Quality, targetPath: Path) =
-        download(DownloadRequest(id, quality, targetPath))
+    override suspend fun downloadAudio(
+        id: String,
+        quality: Quality,
+        targetPath: Path,
+        onProgress: (SourceProgress) -> Unit,
+    ) = download(DownloadRequest(id, quality, targetPath), onProgress)
 
-    private suspend fun download(request: DownloadRequest) {
+    private suspend fun download(request: DownloadRequest, onProgress: (SourceProgress) -> Unit) {
         downloaded += request
-        onDownload(request)
+        onDownload(request, onProgress)
     }
 }

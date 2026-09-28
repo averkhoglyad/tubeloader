@@ -16,7 +16,9 @@ import java.util.concurrent.ConcurrentHashMap
 class DownloadDispatcher(
     private val scope: CoroutineScope,
     private val mediaTool: MediaTool,
-    private val transition: (TaskId, DownloadState) -> Unit,
+    private val register: (TaskId) -> Boolean,
+    private val transition: (TaskId, DownloadStatus) -> Unit,
+    private val onProgress: (TaskId, Progress) -> Unit,
     private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
 ) {
     private val jobs = mutableMapOf<TaskId, Job>()
@@ -24,11 +26,10 @@ class DownloadDispatcher(
     private val toolLock = Mutex()
     private var toolReady = false
 
-    fun submit(targetPath: Path, work: suspend (Path) -> Unit): TaskId {
-        val taskId = taskIdGenerator.next()
+    fun submit(targetPath: Path, work: suspend (Path, (SourceProgress) -> Unit) -> Unit): TaskId {
+        val taskId = allocateTaskId()
         val confirmation = CompletableDeferred<Boolean>()
         overwriteConfirmations[taskId] = confirmation
-        transition(taskId, DownloadState.Queued)
         val job = scope.launch(start = CoroutineStart.LAZY) {
             val part = partialFilePath(targetPath, taskId)
             var overwriteApproved = false
@@ -37,20 +38,22 @@ class DownloadDispatcher(
                     overwriteApproved = awaitOverwriteConfirmation(taskId, targetPath, confirmation)
                     if (!overwriteApproved) {
                         deleteQuietly(part)
-                        transition(taskId, DownloadState.Cancelled)
+                        transition(taskId, DownloadStatus.Cancelled)
                         return@launch
                     }
                 }
                 ensureToolReady()
                 Files.createFile(part)
-                transition(taskId, DownloadState.Downloading(Progress.Indeterminate))
-                work(part)
-                transition(taskId, DownloadState.Finalizing)
+                transition(taskId, DownloadStatus.Downloading)
+                work(part) { source ->
+                    onProgress(taskId, source.toProgress())
+                }
+                transition(taskId, DownloadStatus.Finalizing)
                 if (!overwriteApproved && Files.exists(targetPath)) {
                     overwriteApproved = awaitOverwriteConfirmation(taskId, targetPath, confirmation)
                     if (!overwriteApproved) {
                         deleteQuietly(part)
-                        transition(taskId, DownloadState.Cancelled)
+                        transition(taskId, DownloadStatus.Cancelled)
                         return@launch
                     }
                 }
@@ -60,14 +63,14 @@ class DownloadDispatcher(
                     arrayOf(StandardCopyOption.ATOMIC_MOVE)
                 }
                 Files.move(part, targetPath, *options)
-                transition(taskId, DownloadState.Completed)
+                transition(taskId, DownloadStatus.Completed)
             } catch (cancellation: CancellationException) {
                 deleteQuietly(part)
-                transition(taskId, DownloadState.Cancelled)
+                transition(taskId, DownloadStatus.Cancelled)
                 throw cancellation
             } catch (failure: Exception) {
                 deleteQuietly(part)
-                transition(taskId, DownloadState.Failed(failure))
+                transition(taskId, DownloadStatus.Failed(failure))
             } finally {
                 jobs.remove(taskId)
                 overwriteConfirmations.remove(taskId)
@@ -76,6 +79,14 @@ class DownloadDispatcher(
         jobs[taskId] = job
         job.start()
         return taskId
+    }
+
+    private fun allocateTaskId(): TaskId {
+        repeat(MAX_TASK_ID_ATTEMPTS) {
+            val candidate = taskIdGenerator.next()
+            if (register(candidate)) return candidate
+        }
+        error("TaskId generator produced an occupied id $MAX_TASK_ID_ATTEMPTS times in a row")
     }
 
     fun confirmOverwrite(taskId: TaskId, overwrite: Boolean) {
@@ -91,7 +102,7 @@ class DownloadDispatcher(
         targetPath: Path,
         confirmation: CompletableDeferred<Boolean>,
     ): Boolean {
-        transition(taskId, DownloadState.Interrupted(PendingInteraction.OverwriteConfirmation(targetPath)))
+        transition(taskId, DownloadStatus.Interrupted(PendingInteraction.OverwriteConfirmation(targetPath)))
         return confirmation.await()
     }
 
@@ -113,4 +124,21 @@ class DownloadDispatcher(
         } catch (_: Exception) {
         }
     }
+}
+
+private const val MAX_TASK_ID_ATTEMPTS = 16
+
+private const val FRACTION_SCALE = 1000L
+
+private fun SourceProgress.toProgress(): Progress = when (this) {
+    SourceProgress.Indeterminate -> Progress.Indeterminate
+    is SourceProgress.Absolute ->
+        if (total > 0 && processed in 0..total) Progress.Determinate(processed, total) else Progress.Indeterminate
+
+    is SourceProgress.Fraction ->
+        if (ratio.isFinite() && ratio in 0.0..1.0) {
+            Progress.Determinate((ratio * FRACTION_SCALE).toLong(), FRACTION_SCALE)
+        } else {
+            Progress.Indeterminate
+        }
 }

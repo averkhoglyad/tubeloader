@@ -5,7 +5,9 @@ import io.kotest.property.Gen
 import io.kotest.property.arbitrary.Codepoint
 import io.kotest.property.arbitrary.alphanumeric
 import io.kotest.property.arbitrary.bind
+import io.kotest.property.arbitrary.double
 import io.kotest.property.arbitrary.enum
+import io.kotest.property.arbitrary.flatMap
 import io.kotest.property.arbitrary.list
 import io.kotest.property.arbitrary.long
 import io.kotest.property.arbitrary.map
@@ -45,3 +47,13 @@ fun Arb.Companion.downloadRequests(
     targetPaths.map { targetDirPath.resolve(it) },
     ::DownloadRequest,
 )
+
+fun Arb.Companion.absoluteProgresses(
+    totals: Arb<Long> = Arb.long(1L..1_000_000L),
+): Arb<SourceProgress.Absolute> = totals.flatMap { total ->
+    Arb.long(0L..total).map { processed -> SourceProgress.Absolute(processed, total) }
+}
+
+fun Arb.Companion.fractions(
+    ratios: Arb<Double> = Arb.double(0.0..1.0),
+): Arb<SourceProgress.Fraction> = ratios.map { SourceProgress.Fraction(it) }

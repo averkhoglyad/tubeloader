@@ -33,8 +33,9 @@
 
 ## Стандарты
 
-Правила написания тестов и тестовый стек фиксируются в спеке фичи
-(`docs/<feature>/spec.md`, секция Testing Decisions).
+Правила написания тестов и тестовый стек — `docs/standards/testing.md`; фича-специфичные швы —
+Testing Decisions спеки фичи (`docs/features/<feature>/spec.md`).
+Стек и роли зависимостей — `docs/tech-stack.md`; версии — `gradle/libs.versions.toml`.
 
 ## Вне scope
 
@@ -59,7 +60,7 @@ Single-context: `CONTEXT.md` и `docs/adr/` в корне. См. `docs/agents/do
 
 ### Specs
 
-Спека — `docs/<feature>/spec.md`, перечисляет свои тикеты в `## Tickets`. См. `docs/agents/specs.md`.
+Спека — `docs/features/<feature>/spec.md`, перечисляет свои тикеты в `## Tickets`. См. `docs/agents/specs.md`.
 
 ## Заметки
 
