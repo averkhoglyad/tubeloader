@@ -32,12 +32,12 @@ interface SourceAdapter {
         quality: Quality,
         targetPath: Path,
         onProgress: (SourceProgress) -> Unit,
-    )
+    ): DownloadResult
 
     suspend fun downloadAudio(
         id: String,
         quality: Quality,
         targetPath: Path,
         onProgress: (SourceProgress) -> Unit,
-    )
+    ): DownloadResult
 }

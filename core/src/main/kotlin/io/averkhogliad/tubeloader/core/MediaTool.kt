@@ -7,14 +7,8 @@ interface MediaOperation {
     val output: Path
 }
 
-sealed interface MediaToolResult {
-    data object Success : MediaToolResult
-
-    data class Failure(val message: String) : MediaToolResult
-}
-
 interface MediaTool {
-    suspend fun initialize()
+    suspend fun initialize(): Result<Unit>
 
-    suspend fun run(operation: MediaOperation, onProgress: (Progress) -> Unit): MediaToolResult
+    suspend fun run(operation: MediaOperation, onProgress: (Progress) -> Unit): Result<Unit>
 }

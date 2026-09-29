@@ -20,7 +20,7 @@ sealed interface DownloadStatus {
 
     data object Cancelled : DownloadStatus
 
-    data class Failed(val error: Throwable) : DownloadStatus
+    data class Failed(val error: DownloadError) : DownloadStatus
 
     data class Interrupted(val pending: PendingInteraction) : DownloadStatus
 }

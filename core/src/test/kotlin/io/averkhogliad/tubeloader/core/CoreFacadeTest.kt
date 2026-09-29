@@ -207,7 +207,7 @@ class CoreFacadeTest : FreeSpec({
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                 val release = CompletableDeferred<Unit>()
-                world.adapters.single().onDownload = { _, _ -> release.await() }
+                world.adapters.single().onDownload = { _, _ -> release.await(); DownloadResult.Success }
                 val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
                 // when
@@ -265,13 +265,13 @@ class CoreFacadeTest : FreeSpec({
             }
         }
 
-        "ends up Failed when the adapter throws" {
+        "ends up Failed when the adapter returns DownloadResult.Failed" {
             runTest {
                 // given
                 val videoId = videoIds.next()
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
-                world.adapters.single().onDownload = { _, _ -> error("adapter broke") }
+                world.adapters.single().onDownload = { _, _ -> DownloadResult.Failed(DownloadError.NetworkTransient) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                 val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
 
@@ -280,7 +280,169 @@ class CoreFacadeTest : FreeSpec({
 
                 // then
                 val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
-                failed.error.message shouldBe "adapter broke"
+                failed.error shouldBe DownloadError.NetworkTransient
+            }
+        }
+
+        "error classes" - {
+            "reports NotFound when the adapter reports NotFound" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    world.adapters.single().onDownload = { _, _ -> DownloadResult.Failed(DownloadError.NotFound) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.NotFound
+                }
+            }
+
+            "reports NetworkTransient when the adapter reports NetworkTransient" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    world.adapters.single().onDownload = { _, _ -> DownloadResult.Failed(DownloadError.NetworkTransient) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.NetworkTransient
+                }
+            }
+
+            "reports UrlExpired when the adapter reports UrlExpired" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    world.adapters.single().onDownload = { _, _ -> DownloadResult.Failed(DownloadError.UrlExpired) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.UrlExpired
+                }
+            }
+
+            "reports ExtractorBroken when the adapter reports ExtractorBroken" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    world.adapters.single().onDownload = { _, _ -> DownloadResult.Failed(DownloadError.ExtractorBroken) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val request = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.ExtractorBroken
+                }
+            }
+        }
+
+        "fails the task with ExtractorBroken when the adapter throws" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val dir = Files.createTempDirectory(tempDir, "staging")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val target = request.targetPath
+                val release = CompletableDeferred<Unit>()
+                world.adapters.single().onDownload = { _, _ ->
+                    release.await()
+                    error("adapter broke")
+                }
+
+                // when
+                val taskId = world.facade.enqueue(resolved, request)
+                val whileDownloading = world.observedStates(taskId).map { it.status }
+                release.complete(Unit)
+                world.awaitState(taskId) { it.status is DownloadStatus.Failed }
+
+                // then
+                whileDownloading shouldBe listOf(DownloadStatus.Queued, DownloadStatus.Downloading)
+                val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                failed.error shouldBe DownloadError.ExtractorBroken
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "media tool failures" - {
+            "fails the task without a partial when the tool cannot initialize" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val tool = FakeMediaTool()
+                    tool.onInitialize = { Result.failure(IllegalStateException("tool missing")) }
+                    val world = facadeWorld(mediaTool = tool)
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.ExtractorBroken
+                    Files.exists(target) shouldBe false
+                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
+            }
+
+            "fails the task and deletes the partial when the tool run fails" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val tool = FakeMediaTool()
+                    tool.onRun = { Result.failure(IllegalStateException("mux failed")) }
+                    val world = facadeWorld(mediaTool = tool)
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+                    val operation = Arb.mediaOperations().next()
+                    world.adapters.single().onDownload = { _, _ ->
+                        tool.run(operation) {}.getOrThrow()
+                        DownloadResult.Success
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.ExtractorBroken
+                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
             }
         }
 
@@ -369,13 +531,13 @@ class CoreFacadeTest : FreeSpec({
                 }
             }
 
-            "deletes the partial file when the adapter throws" {
+            "deletes the partial file when the adapter returns DownloadResult.Failed" {
                 runTest {
                     // given
                     val videoId = videoIds.next()
                     val world = facadeWorld()
                     world.adapters.single().onFind = { FindResult.Found(videoId) }
-                    world.adapters.single().onDownload = { _, _ -> error("adapter broke") }
+                    world.adapters.single().onDownload = { _, _ -> DownloadResult.Failed(DownloadError.NetworkTransient) }
                     val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                     val dir = Files.createTempDirectory(tempDir, "staging")
                     val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
@@ -399,7 +561,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onFind = { FindResult.Found(videoId) }
                     val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                     val release = CompletableDeferred<Unit>()
-                    world.adapters.single().onDownload = { _, _ -> release.await() }
+                    world.adapters.single().onDownload = { _, _ -> release.await(); DownloadResult.Success }
                     val dir = Files.createTempDirectory(tempDir, "staging")
                     val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
                     val target = request.targetPath
@@ -495,7 +657,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(absolute)
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -527,7 +689,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(fraction)
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -558,7 +720,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(SourceProgress.Indeterminate)
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -590,7 +752,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(SourceProgress.Absolute(processed, total = 0L))
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -622,7 +784,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(SourceProgress.Absolute(total + 1, total))
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -653,7 +815,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(SourceProgress.Fraction(Double.POSITIVE_INFINITY))
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -684,7 +846,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(SourceProgress.Fraction(5.0))
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
 
                     // when
@@ -715,6 +877,7 @@ class CoreFacadeTest : FreeSpec({
                     world.adapters.single().onDownload = { _, onProgress ->
                         onProgress(absolute)
                         Files.createFile(request.targetPath)
+                        DownloadResult.Success
                     }
 
                     // when
@@ -743,7 +906,7 @@ class CoreFacadeTest : FreeSpec({
                         lateProgress = onProgress
                         onProgress(absolute)
                         reported.complete(Unit)
-                        release.await()
+                        release.await(); DownloadResult.Success
                     }
                     val taskId = world.facade.enqueue(
                         resolved,
@@ -773,7 +936,7 @@ class CoreFacadeTest : FreeSpec({
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                world.adapters.single().onDownload = { _, _ -> CompletableDeferred<Unit>().await() }
+                world.adapters.single().onDownload = { _, _ -> CompletableDeferred<Unit>().await(); DownloadResult.Success }
                 val taskId = world.facade.enqueue(
                     resolved,
                 Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
@@ -801,6 +964,7 @@ class CoreFacadeTest : FreeSpec({
                         firstStarted.complete(Unit)
                         CompletableDeferred<Unit>().await()
                     }
+                    DownloadResult.Success
                 }
                 val cancelled = world.facade.enqueue(
                     resolved,

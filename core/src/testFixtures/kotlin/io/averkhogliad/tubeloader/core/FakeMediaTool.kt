@@ -2,17 +2,17 @@ package io.averkhogliad.tubeloader.core
 
 class FakeMediaTool : MediaTool {
 
-    var onInitialize: suspend () -> Unit = {}
-    var onRun: suspend (MediaOperation) -> MediaToolResult = { MediaToolResult.Success }
+    var onInitialize: suspend () -> Result<Unit> = { Result.success(Unit) }
+    var onRun: suspend (MediaOperation) -> Result<Unit> = { Result.success(Unit) }
 
     var initializeCalls = 0
         private set
 
-    override suspend fun initialize() {
+    override suspend fun initialize(): Result<Unit> {
         initializeCalls++
-        onInitialize()
+        return onInitialize()
     }
 
-    override suspend fun run(operation: MediaOperation, onProgress: (Progress) -> Unit): MediaToolResult =
+    override suspend fun run(operation: MediaOperation, onProgress: (Progress) -> Unit): Result<Unit> =
         onRun(operation)
 }

@@ -26,7 +26,7 @@ class DownloadDispatcher(
     private val toolLock = Mutex()
     private var toolReady = false
 
-    fun submit(targetPath: Path, work: suspend (Path, (SourceProgress) -> Unit) -> Unit): TaskId {
+    fun submit(targetPath: Path, work: suspend (Path, (SourceProgress) -> Unit) -> DownloadResult): TaskId {
         val taskId = allocateTaskId()
         val confirmation = CompletableDeferred<Boolean>()
         overwriteConfirmations[taskId] = confirmation
@@ -45,8 +45,16 @@ class DownloadDispatcher(
                 ensureToolReady()
                 Files.createFile(part)
                 transition(taskId, DownloadStatus.Downloading)
-                work(part) { source ->
+                val outcome = work(part) { source ->
                     onProgress(taskId, source.toProgress())
+                }
+                when (outcome) {
+                    DownloadResult.Success -> Unit
+                    is DownloadResult.Failed -> {
+                        deleteQuietly(part)
+                        transition(taskId, DownloadStatus.Failed(outcome.error))
+                        return@launch
+                    }
                 }
                 transition(taskId, DownloadStatus.Finalizing)
                 if (!overwriteApproved && Files.exists(targetPath)) {
@@ -70,7 +78,7 @@ class DownloadDispatcher(
                 throw cancellation
             } catch (failure: Exception) {
                 deleteQuietly(part)
-                transition(taskId, DownloadStatus.Failed(failure))
+                transition(taskId, DownloadStatus.Failed(DownloadError.ExtractorBroken))
             } finally {
                 jobs.remove(taskId)
                 overwriteConfirmations.remove(taskId)
@@ -109,7 +117,7 @@ class DownloadDispatcher(
     private suspend fun ensureToolReady() {
         toolLock.withLock {
             if (!toolReady) {
-                mediaTool.initialize()
+                mediaTool.initialize().getOrThrow()
                 toolReady = true
             }
         }
