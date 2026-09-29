@@ -2,6 +2,7 @@ name: GitVerse Pages Static
 
 on:
   push:
+    branches: [main]
   workflow_dispatch:
 
 jobs:
