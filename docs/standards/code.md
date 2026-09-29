@@ -15,8 +15,10 @@
 
 ```kotlin
 class DownloadQueue(
-    private val scope: CoroutineScope,
-    private val limitProvider: () -> Int,
+    private val parentScope: CoroutineScope,
+    private val dispatcher: CoroutineDispatcher,
+    private val workContext: CoroutineContext,
+    private val config: StateFlow<AppConfig>,
     private val onProgress: (TaskId, Progress) -> Unit,
 )
 
@@ -28,15 +30,19 @@ suspend fun downloadVideo(
 ): DownloadResult
 ```
 
+Конструктор — шов сборки, а не шов обратного вызова: зависимостями идут скоуп, диспетчер
+конфайнмента, рабочий контекст и конфигурация. Дефолтных значений у них нет — способ построения
+зависимости знает только композиционный код; исключение — часы (`clock`, по умолчанию системные).
+
 Неправильно:
 
 ```kotlin
 // колбек зажат между зависимостями и дефолтом
 class DownloadQueue(
-    private val scope: CoroutineScope,
-    private val limitProvider: () -> Int,
+    private val parentScope: CoroutineScope,
+    private val config: StateFlow<AppConfig>,
     private val onProgress: (TaskId, Progress) -> Unit,
-    private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
+    private val clock: Clock = Clock.System,
 )
 ```
 
