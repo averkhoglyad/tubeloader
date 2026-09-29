@@ -2,17 +2,31 @@ package io.averkhogliad.tubeloader.core
 
 import java.nio.file.Path
 
-interface MediaOperation {
-    val inputs: List<Path>
-    val output: Path
-}
-
+/**
+ * Core port for operations on media files. Implementations translate an operation into whatever the
+ * backing tool understands (bundled library or an external CLI process).
+ *
+ * Cancelling the coroutine an operation runs in interrupts it: the implementation kills the whole
+ * process tree of the tool it started, orphaned children are not allowed.
+ */
 interface MediaTool {
-    suspend fun initialize(): Result<Unit>
+    /**
+     * Joins one video track and one audio track into a single file by copying both streams.
+     */
+    suspend fun mux(
+        video: Path,
+        audio: Path,
+        output: Path,
+        onProgress: (Progress) -> Unit,
+    ): Result<Unit>
 
     /**
-     * Cancelling the coroutine this call runs in interrupts the operation. The implementation must
-     * then kill the whole process tree of the tool it started; orphaned children are not allowed.
+     * Rewrites a single input into [output] by copying its streams, so the result is a normalized
+     * container of the same content.
      */
-    suspend fun run(operation: MediaOperation, onProgress: (Progress) -> Unit): Result<Unit>
+    suspend fun remux(
+        input: Path,
+        output: Path,
+        onProgress: (Progress) -> Unit,
+    ): Result<Unit>
 }

@@ -10,7 +10,6 @@ import kotlinx.coroutines.flow.update
 
 class CoreFacade(
     private val adapters: List<SourceAdapter>,
-    private val mediaTool: MediaTool,
     initialConfig: AppConfig = AppConfig(),
     private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default),
     taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
@@ -30,7 +29,7 @@ class CoreFacade(
     private val _config = MutableStateFlow(initialConfig)
     val config: StateFlow<AppConfig> = _config.asStateFlow()
 
-    private val dispatcher = DownloadDispatcher(scope, mediaTool, ::register, ::transition, ::updateProgress, taskIdGenerator)
+    private val dispatcher = DownloadDispatcher(scope, taskIdGenerator, ::register, ::transition, ::updateProgress)
 
     suspend fun findByUrl(input: String): ResolveResult {
         val matches = mutableListOf<Pair<Source, String>>()
@@ -77,13 +76,7 @@ class CoreFacade(
             error("targetPath must include a parent directory: ${request.targetPath}")
         }
         return dispatcher.submit(request.targetPath) { partPath, onProgress ->
-            when (request.quality.kind) {
-                MediaKind.Video ->
-                    adapter.downloadVideo(video.videoId, request.quality, partPath, onProgress)
-
-                MediaKind.Audio ->
-                    adapter.downloadAudio(video.videoId, request.quality, partPath, onProgress)
-            }
+            adapter.downloadVideo(video.videoId, request.quality, partPath, onProgress)
         }
     }
 

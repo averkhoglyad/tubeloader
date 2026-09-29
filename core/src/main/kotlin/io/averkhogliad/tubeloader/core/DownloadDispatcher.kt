@@ -7,8 +7,7 @@ import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
+import kotlinx.coroutines.yield
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
@@ -17,16 +16,13 @@ import kotlin.coroutines.coroutineContext
 
 class DownloadDispatcher(
     private val scope: CoroutineScope,
-    private val mediaTool: MediaTool,
+    private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
     private val register: (TaskId) -> Boolean,
     private val transition: (TaskId, DownloadStatus) -> Unit,
     private val onProgress: (TaskId, Progress) -> Unit,
-    private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
 ) {
     private val jobs = mutableMapOf<TaskId, Job>()
     private val overwriteConfirmations = ConcurrentHashMap<TaskId, CompletableDeferred<Boolean>>()
-    private val toolLock = Mutex()
-    private var toolReady = false
 
     fun submit(targetPath: Path, work: suspend (Path, (SourceProgress) -> Unit) -> DownloadResult): TaskId {
         val taskId = allocateTaskId()
@@ -44,7 +40,9 @@ class DownloadDispatcher(
                         return@launch
                     }
                 }
-                ensureToolReady()
+                transition(taskId, DownloadStatus.LoadingMeta)
+                // without a suspension point the phase is conflated away for a collector on another thread
+                yield()
                 Files.createFile(part)
                 transition(taskId, DownloadStatus.Downloading)
                 val outcome = work(part) { source ->
@@ -122,15 +120,6 @@ class DownloadDispatcher(
     ): Boolean {
         transition(taskId, DownloadStatus.Interrupted(PendingInteraction.OverwriteConfirmation(targetPath)))
         return confirmation.await()
-    }
-
-    private suspend fun ensureToolReady() {
-        toolLock.withLock {
-            if (!toolReady) {
-                mediaTool.initialize().getOrThrow()
-                toolReady = true
-            }
-        }
     }
 
     private fun partialFilePath(target: Path, taskId: TaskId): Path =

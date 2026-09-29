@@ -1,4 +1,4 @@
-package io.averkhogliad.tubeloader.core
+﻿package io.averkhogliad.tubeloader.core
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FreeSpec
@@ -220,6 +220,7 @@ class CoreFacadeTest : FreeSpec({
                 // then
                 statesWhileDownloading shouldBe listOf(
                     DownloadState(DownloadStatus.Queued),
+                    DownloadState(DownloadStatus.LoadingMeta),
                     DownloadState(DownloadStatus.Downloading),
                 )
                 world.observedStates(taskId).last() shouldBe DownloadState(DownloadStatus.Completed)
@@ -243,27 +244,6 @@ class CoreFacadeTest : FreeSpec({
                 passed.quality shouldBe request.quality
                 passed.targetPath shouldNotBe request.targetPath
                 passed.targetPath.parent shouldBe request.targetPath.parent
-            }
-        }
-
-        "initializes the media tool once for several downloads" {
-            runTest {
-                // given
-                val videoId = videoIds.next()
-                val world = facadeWorld()
-                world.adapters.single().onFind = { FindResult.Found(videoId) }
-                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                val firstRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
-                val secondRequest = Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next()
-
-                // when
-                val first = world.facade.enqueue(resolved, firstRequest)
-                val second = world.facade.enqueue(resolved, secondRequest)
-
-                // then
-                world.mediaTool.initializeCalls shouldBe 1
-                world.facade.downloads.value[first] shouldBe DownloadState(DownloadStatus.Completed)
-                world.facade.downloads.value[second] shouldBe DownloadState(DownloadStatus.Completed)
             }
         }
 
@@ -387,7 +367,11 @@ class CoreFacadeTest : FreeSpec({
                 world.awaitState(taskId) { it.status is DownloadStatus.Failed }
 
                 // then
-                whileDownloading shouldBe listOf(DownloadStatus.Queued, DownloadStatus.Downloading)
+                whileDownloading shouldBe listOf(
+                    DownloadStatus.Queued,
+                    DownloadStatus.LoadingMeta,
+                    DownloadStatus.Downloading,
+                )
                 val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
                 failed.error shouldBe DownloadError.ExtractorBroken
                 leftoverFilesIn(target.parent, target) shouldBe emptyList()
@@ -395,45 +379,25 @@ class CoreFacadeTest : FreeSpec({
         }
 
         "media tool failures" - {
-            "fails the task without a partial when the tool cannot initialize" {
+            "fails the task and deletes the partial when mux fails" {
                 runTest {
                     // given
                     val videoId = videoIds.next()
                     val tool = FakeMediaTool()
-                    tool.onInitialize = { Result.failure(IllegalStateException("tool missing")) }
-                    val world = facadeWorld(mediaTool = tool)
+                    tool.onMux = { _, _, _ -> Result.failure(IllegalStateException("mux failed")) }
+                    val world = facadeWorld()
                     world.adapters.single().onFind = { FindResult.Found(videoId) }
                     val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
                     val dir = Files.createTempDirectory(tempDir, "staging")
                     val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
                     val target = request.targetPath
-
-                    // when
-                    val taskId = world.facade.enqueue(resolved, request)
-
-                    // then
-                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
-                    failed.error shouldBe DownloadError.ExtractorBroken
-                    Files.exists(target) shouldBe false
-                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
-                }
-            }
-
-            "fails the task and deletes the partial when the tool run fails" {
-                runTest {
-                    // given
-                    val videoId = videoIds.next()
-                    val tool = FakeMediaTool()
-                    tool.onRun = { Result.failure(IllegalStateException("mux failed")) }
-                    val world = facadeWorld(mediaTool = tool)
-                    world.adapters.single().onFind = { FindResult.Found(videoId) }
-                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                    val dir = Files.createTempDirectory(tempDir, "staging")
-                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
-                    val target = request.targetPath
-                    val operation = Arb.mediaOperations().next()
-                    world.adapters.single().onDownload = { _, _ ->
-                        tool.run(operation) {}.getOrThrow()
+                    world.adapters.single().onDownload = { download, _ ->
+                        val audio = Files.createTempFile(dir, "audio", ".m4a")
+                        try {
+                            tool.mux(download.targetPath, audio, download.targetPath) {}.getOrThrow()
+                        } finally {
+                            Files.deleteIfExists(audio)
+                        }
                         DownloadResult.Success
                     }
 
@@ -444,6 +408,92 @@ class CoreFacadeTest : FreeSpec({
                     val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
                     failed.error shouldBe DownloadError.ExtractorBroken
                     leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
+            }
+
+            "fails the task and deletes the partial when remux fails" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val tool = FakeMediaTool()
+                    tool.onRemux = { _, _ -> Result.failure(IllegalStateException("remux failed")) }
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val target = request.targetPath
+                    world.adapters.single().onDownload = { download, _ ->
+                        tool.remux(download.targetPath, download.targetPath) {}.getOrThrow()
+                        DownloadResult.Success
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+
+                    // then
+                    val failed = world.facade.downloads.value.getValue(taskId).status as DownloadStatus.Failed
+                    failed.error shouldBe DownloadError.ExtractorBroken
+                    leftoverFilesIn(target.parent, target) shouldBe emptyList()
+                }
+            }
+
+            "passes both tracks to mux in video-then-audio order" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val tool = FakeMediaTool()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val audio = Files.createTempFile(dir, "audio", ".m4a")
+                    Files.deleteIfExists(audio)
+                    var pathGivenToAdapter: Path? = null
+                    world.adapters.single().onDownload = { download, _ ->
+                        pathGivenToAdapter = download.targetPath
+                        tool.mux(download.targetPath, audio, download.targetPath) {}
+                        DownloadResult.Success
+                    }
+
+                    // when
+                    world.facade.enqueue(resolved, request)
+
+                    // then
+                    val call = tool.muxCalls.single()
+                    call.video shouldBe pathGivenToAdapter
+                    call.audio shouldBe audio
+                    call.output shouldBe pathGivenToAdapter
+                }
+            }
+
+            "passes progress from the tool through to the facade" {
+                runTest {
+                    // given
+                    val videoId = videoIds.next()
+                    val tool = FakeMediaTool()
+                    val world = facadeWorld()
+                    world.adapters.single().onFind = { FindResult.Found(videoId) }
+                    val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                    val dir = Files.createTempDirectory(tempDir, "staging")
+                    val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                    val release = CompletableDeferred<Unit>()
+                    world.adapters.single().onDownload = { download, onProgress ->
+                        onProgress(SourceProgress.Fraction(0.5))
+                        release.await()
+                        DownloadResult.Success
+                    }
+
+                    // when
+                    val taskId = world.facade.enqueue(resolved, request)
+                    val during = world.facade.downloads.value.getValue(taskId)
+                    release.complete(Unit)
+                    world.awaitState(taskId) { it.status == DownloadStatus.Completed }
+
+                    // then
+                    during.status shouldBe DownloadStatus.Downloading
+                    during.progress shouldBe Progress.Determinate(500, 1000)
                 }
             }
         }
@@ -1297,7 +1347,6 @@ class CoreFacadeTest : FreeSpec({
 
 private class FacadeWorld(
     val adapters: List<FakeSourceAdapter>,
-    val mediaTool: FakeMediaTool,
     val facade: CoreFacade,
     private val snapshots: List<Map<TaskId, DownloadState>>,
 ) {
@@ -1315,16 +1364,15 @@ private class FacadeWorld(
 @OptIn(ExperimentalCoroutinesApi::class)
 private fun TestScope.facadeWorld(
     adapters: List<FakeSourceAdapter> = listOf(FakeSourceAdapter()),
-    mediaTool: FakeMediaTool = FakeMediaTool(),
     initialConfig: AppConfig = AppConfig(),
     taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
     dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
 ): FacadeWorld {
     val scope = CoroutineScope(dispatcher)
-    val facade = CoreFacade(adapters, mediaTool, initialConfig, scope, taskIdGenerator)
+    val facade = CoreFacade(adapters, initialConfig, scope, taskIdGenerator)
     val snapshots = mutableListOf<Map<TaskId, DownloadState>>()
     scope.launch { facade.downloads.collect { snapshots += it } }
-    return FacadeWorld(adapters, mediaTool, facade, snapshots)
+    return FacadeWorld(adapters, facade, snapshots)
 }
 
 private fun leftoverFilesIn(dir: Path, expected: Path): List<Path> =

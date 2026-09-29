@@ -24,13 +24,6 @@ class FakeSourceAdapter(
         onProgress: (SourceProgress) -> Unit,
     ): DownloadResult = download(DownloadRequest(id, quality, targetPath), onProgress)
 
-    override suspend fun downloadAudio(
-        id: String,
-        quality: Quality,
-        targetPath: Path,
-        onProgress: (SourceProgress) -> Unit,
-    ): DownloadResult = download(DownloadRequest(id, quality, targetPath), onProgress)
-
     private suspend fun download(request: DownloadRequest, onProgress: (SourceProgress) -> Unit): DownloadResult {
         downloaded += request
         return onDownload(request, onProgress)

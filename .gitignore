@@ -10,4 +10,5 @@ etc/
 
 # AI for OpenIDE — local agent state (chat transcripts, memory, snapshots; may contain secrets).
 .aiforopenide/
-/.veai/
+.veai/
+.kotlin/

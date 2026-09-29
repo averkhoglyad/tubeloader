@@ -57,13 +57,3 @@ fun Arb.Companion.absoluteProgresses(
 fun Arb.Companion.fractions(
     ratios: Arb<Double> = Arb.double(0.0..1.0),
 ): Arb<SourceProgress.Fraction> = ratios.map { SourceProgress.Fraction(it) }
-
-fun Arb.Companion.mediaOperations(
-    inputs: Arb<List<Path>> = Arb.list(Arb.relativePaths(), 0..3),
-    outputs: Arb<Path> = Arb.relativePaths(),
-): Arb<MediaOperation> = Arb.bind(inputs, outputs) { operationInputs, output ->
-    object : MediaOperation {
-        override val inputs: List<Path> = operationInputs
-        override val output: Path = output
-    }
-}
