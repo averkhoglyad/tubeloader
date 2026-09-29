@@ -33,7 +33,8 @@
 
 ## Стандарты
 
-Правила написания тестов и тестовый стек — `docs/standards/testing.md`; фича-специфичные швы —
+Правила написания тестов и тестовый стек — `docs/standards/testing.md`; передача ошибок между
+швами — `docs/standards/errors.md`; фича-специфичные швы —
 Testing Decisions спеки фичи (`docs/features/<feature>/spec.md`).
 Стек и роли зависимостей — `docs/tech-stack.md`; версии — `gradle/libs.versions.toml`.
 
