@@ -1,0 +1,6 @@
+title=Reference clip
+author=Reference author
+duration=93
+thumbnail=https://cdn.reference.example/meta/ref-1.jpg
+quality=hls-360|Video|360p
+quality=hls-720|Video|720p

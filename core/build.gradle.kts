@@ -14,6 +14,9 @@ dependencies {
     implementation(libs.kotlinx.coroutines.core)
     implementation(project(":common:config"))
 
+    testFixturesApi(libs.kotest.runner.junit6)
+    testFixturesApi(libs.kotest.assertions.core)
+
     testImplementation(libs.kotest.runner.junit6)
     testImplementation(libs.kotest.assertions.core)
     testImplementation(libs.kotest.property)
