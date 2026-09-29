@@ -24,7 +24,7 @@ jobs:
             range="$BEFORE..$after"
           fi
           echo "range=$range"
-          git log --format='%H%x09%s' "$range" > /tmp/commits.tsv
+          git log --format='%H%x09%s%x09%an' "$range" > /tmp/commits.tsv
           wc -l < /tmp/commits.tsv
 
       - name: Отправить комментарии в Weeek

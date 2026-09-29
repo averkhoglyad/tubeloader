@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # Публикует упоминания задач Weeek из коммитов пуша и из смерженных MR.
 #
-#   git log --format='%H%x09%s' <range> | notify.sh push
+#   git log --format='%H%x09%s%x09%an' <range> | notify.sh push
 #   PR_NUMBER=6 PR_TITLE='...' notify.sh pr
 #
 # Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1, GITVERSE_REPOSITORY.
@@ -48,6 +48,21 @@ ticket_ids() { # stdin текст -> id задачи по строке; пуст
   { grep -oE "$TICKET_PATTERN" || true; } | tr -d '[]' | sort -un
 }
 
+author_link() { # name sha -> "name [↗️](profile)" либо одно имя
+  local name="$1" sha="$2" payload username=""
+  payload="$(curl -s --max-time "$API_MAX_TIME" \
+    "https://gitverse.ru/api/repos/${GITVERSE_REPOSITORY}/commits/${sha}" 2>/dev/null || true)"
+  # username есть только у коммитов, привязанных GitVerse к аккаунту; у остальных "user":null
+  if [[ "$payload" =~ \"author\":\{[^}]*\"user\":\{[^}]*\"username\":\"([^\"]+)\" ]]; then
+    username="${BASH_REMATCH[1]}"
+  fi
+  if [ -n "$username" ]; then
+    printf '%s [↗️](https://gitverse.ru/%s)' "$name" "$username"
+  else
+    printf '%s' "$name"
+  fi
+}
+
 check_task() { # id -> ok|deleted|missing|error:<код>
   local code
   code="$(request GET "/tm/tasks/$1")" || return 1
@@ -92,18 +107,19 @@ post_comment() { # task_id markdown
 }
 
 run_push() {
-  local sha subject ids id state total=0
-  local -A by_task=()      # id -> строки "sha<TAB>subject"
+  local sha subject author ids id state total=0
+  local -A by_task=()      # id -> строки "sha<TAB>subject<TAB>author"
   local -A seen=()         # id/sha -> 1, дедуп внутри пуша
 
-  while IFS=$'\t' read -r sha subject; do
+  while IFS=$'\t' read -r sha subject author; do
     [ -n "${sha:-}" ] || continue
     total=$((total + 1))
     ids="$(printf '%s' "${subject:-}" | ticket_ids)"
     for id in $ids; do
       [ "${seen["$id/$sha"]:-}" = 1 ] && continue
       seen["$id/$sha"]=1
-      by_task[$id]+="$(printf '%s\t%s\n' "$sha" "${subject:-}")"
+      # перевод строки — вне подстановки: $(...) срезает завершающий \n и записи батча слипаются
+      by_task[$id]+="$(printf '%s\t%s\t%s' "$sha" "${subject:-}" "${author:-}")"$'\n'
     done
   done
 
@@ -125,8 +141,8 @@ run_push() {
       *) log "!! задача ${id} -> ${state}"; continue ;;
     esac
 
-    local markdown="" sha_short
-    while IFS=$'\t' read -r sha subject; do
+    local markdown="" sha_short line author
+    while IFS=$'\t' read -r sha subject author; do
       [ -n "$sha" ] || continue
       # маркер дедупа — полный sha: он попадает в текст ссылки, других полных sha в комментарии нет
       if has_marker "$id" "$sha"; then
@@ -135,7 +151,9 @@ run_push() {
       fi
       sha_short="${sha:0:7}"
       # бэктики внутрь ссылки нельзя: сервер выносит их наружу и ссылка ломается
-      markdown+="- [${sha_short}](${WEB_BASE}/commit/${sha}) ${subject:-}"$'\n'
+      line="- [${sha_short}](${WEB_BASE}/commit/${sha}) ${subject:-}"
+      [ -n "${author:-}" ] && line+=" · автор $(author_link "$author" "$sha")"
+      markdown+="${line}"$'\n'
     done <<<"${by_task[$id]}"
 
     if [ -z "$markdown" ]; then
@@ -145,7 +163,7 @@ run_push() {
 
     local text="**Коммиты**"
     if [ -n "${BRANCH:-}" ]; then
-      text+=" в ветку \`${BRANCH}\`"
+      text+=" в ветку [${BRANCH}](${WEB_BASE}/content/${BRANCH})"
     fi
     text+=$'\n\n'"${markdown%$'\n'}"
     post_comment "$id" "$text"
@@ -165,13 +183,13 @@ run_pr() {
     return 0
   fi
 
-  text="**Слияние MR**"$'\n\n'
+  text="**Слияние PR**"$'\n\n'
   text+="[#${number}](${WEB_BASE}/pulls/${number}) ${title:-}"
-  local origin=""
-  [ -n "${PR_HEAD_REF:-}" ] && origin="\`${PR_HEAD_REF}\` -> "
-  origin+="\`${PR_BASE_REF:-main}\`"
+  local origin="" head_ref="${PR_HEAD_REF:-}" base_ref="${PR_BASE_REF:-main}"
+  [ -n "$head_ref" ] && origin="[${head_ref}](${WEB_BASE}/content/${head_ref}) -> "
+  origin+="[${base_ref}](${WEB_BASE}/content/${base_ref})"
   text+=$'\n'"${origin}"
-  [ -n "${PR_AUTHOR:-}" ] && text+=" · автор @${PR_AUTHOR}"
+  [ -n "${PR_AUTHOR:-}" ] && text+=" · автор @${PR_AUTHOR} [↗️](https://gitverse.ru/${PR_AUTHOR})"
 
   local id state
   for id in $ids; do
