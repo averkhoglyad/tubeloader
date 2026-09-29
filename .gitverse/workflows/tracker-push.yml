@@ -19,12 +19,15 @@ jobs:
         run: |
           zero=0000000000000000000000000000000000000000
           after="${AFTER:-$HEAD_SHA}"
-          range="-1"
+          range=(-1)
           if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] && [ -n "$after" ]; then
-            range="$BEFORE..$after"
+            range=("$BEFORE..$after")
+          elif [ -n "$after" ] && git rev-parse --verify --quiet refs/remotes/origin/main > /dev/null; then
+            # before нулевой — push новой ветки, точка отсчёта main
+            range=("$after" --not refs/remotes/origin/main)
           fi
-          echo "range=$range"
-          git log --format='%H%x09%s%x09%an' "$range" > /tmp/commits.tsv
+          echo "range=${range[*]}"
+          git log --format='%H%x09%s%x09%an' "${range[@]}" > /tmp/commits.tsv
           wc -l < /tmp/commits.tsv
 
       - name: Отправить комментарии в Weeek
