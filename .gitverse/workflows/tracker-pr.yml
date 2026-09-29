@@ -1,4 +1,4 @@
-name: 'Tracker: слияние MR в Weeek'
+name: 'Tracker: слияние PR в Weeek'
 
 on:
   pull_request:
@@ -17,7 +17,7 @@ jobs:
           GITVERSE_REPOSITORY: ${{ gitverse.repository }}
           PR_NUMBER: ${{ gitverse.event.pull_request.number }}
           PR_TITLE: ${{ gitverse.event.pull_request.title }}
-          PR_AUTHOR: ${{ gitverse.actor }}
+          PR_AUTHOR: ${{ gitverse.event.pull_request.user.login }}
           PR_HEAD_REF: ${{ gitverse.event.pull_request.head.ref }}
           PR_BASE_REF: ${{ gitverse.event.pull_request.base.ref }}
           PR_MERGE_SHA: ${{ gitverse.event.pull_request.merge_commit_sha }}

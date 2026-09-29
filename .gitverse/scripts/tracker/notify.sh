@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Публикует упоминания задач Weeek из коммитов пуша и из смерженных MR.
+# Публикует упоминания задач Weeek из коммитов пуша и из смерженных PR.
 #
 #   git log --format='%H%x09%s%x09%an' <range> | notify.sh push
 #   PR_NUMBER=6 PR_TITLE='...' notify.sh pr
@@ -46,21 +46,6 @@ json_string() { # stdin -> содержимое JSON-строки без кав�
 
 ticket_ids() { # stdin текст -> id задачи по строке; пустой вход даёт пустой вывод, не ошибку
   { grep -oE "$TICKET_PATTERN" || true; } | tr -d '[]' | sort -un
-}
-
-author_link() { # name sha -> "name [↗️](profile)" либо одно имя
-  local name="$1" sha="$2" payload username=""
-  payload="$(curl -s --max-time "$API_MAX_TIME" \
-    "https://gitverse.ru/api/repos/${GITVERSE_REPOSITORY}/commits/${sha}" 2>/dev/null || true)"
-  # username есть только у коммитов, привязанных GitVerse к аккаунту; у остальных "user":null
-  if [[ "$payload" =~ \"author\":\{[^}]*\"user\":\{[^}]*\"username\":\"([^\"]+)\" ]]; then
-    username="${BASH_REMATCH[1]}"
-  fi
-  if [ -n "$username" ]; then
-    printf '%s [↗️](https://gitverse.ru/%s)' "$name" "$username"
-  else
-    printf '%s' "$name"
-  fi
 }
 
 check_task() { # id -> ok|deleted|missing|error:<код>
@@ -152,7 +137,7 @@ run_push() {
       sha_short="${sha:0:7}"
       # бэктики внутрь ссылки нельзя: сервер выносит их наружу и ссылка ломается
       line="- [${sha_short}](${WEB_BASE}/commit/${sha}) ${subject:-}"
-      [ -n "${author:-}" ] && line+=" · автор $(author_link "$author" "$sha")"
+      [ -n "${author:-}" ] && line+=" · автор ${author}"
       markdown+="${line}"$'\n'
     done <<<"${by_task[$id]}"
 
@@ -179,7 +164,7 @@ run_pr() {
   local ids
   ids="$(printf '%s' "$title" | ticket_ids)"
   if [ -z "$ids" ]; then
-    log 'в заголовке MR нет упоминания задач — публиковать нечего'
+    log 'в заголовке PR нет упоминания задач — публиковать нечего'
     return 0
   fi
 
@@ -201,7 +186,7 @@ run_pr() {
       *) log "!! задача ${id} -> ${state}"; continue ;;
     esac
     if has_marker "$id" "$marker"; then
-      log "   MR #${number} уже отмечен в задаче ${id} — пропуск"
+      log "   PR #${number} уже отмечен в задаче ${id} — пропуск"
       continue
     fi
     post_comment "$id" "$text"
