@@ -110,7 +110,9 @@ class CoreFacade(
 
     private fun transition(taskId: TaskId, status: DownloadStatus) {
         _downloads.update { states ->
-            states + (taskId to DownloadState(status, states[taskId]?.progress ?: Progress.Indeterminate))
+            val current = states[taskId]
+            if (current?.status?.isTerminal == true) return@update states
+            states + (taskId to DownloadState(status, current?.progress ?: Progress.Indeterminate))
         }
     }
 
@@ -121,3 +123,6 @@ class CoreFacade(
         }
     }
 }
+
+private val DownloadStatus.isTerminal: Boolean
+    get() = this is DownloadStatus.Completed || this is DownloadStatus.Cancelled || this is DownloadStatus.Failed

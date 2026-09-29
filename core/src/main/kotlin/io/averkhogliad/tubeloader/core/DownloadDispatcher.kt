@@ -5,6 +5,7 @@ import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
@@ -12,6 +13,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
 import java.util.concurrent.ConcurrentHashMap
+import kotlin.coroutines.coroutineContext
 
 class DownloadDispatcher(
     private val scope: CoroutineScope,
@@ -28,10 +30,10 @@ class DownloadDispatcher(
 
     fun submit(targetPath: Path, work: suspend (Path, (SourceProgress) -> Unit) -> DownloadResult): TaskId {
         val taskId = allocateTaskId()
+        val part = partialFilePath(targetPath, taskId)
         val confirmation = CompletableDeferred<Boolean>()
         overwriteConfirmations[taskId] = confirmation
         val job = scope.launch(start = CoroutineStart.LAZY) {
-            val part = partialFilePath(targetPath, taskId)
             var overwriteApproved = false
             try {
                 if (Files.exists(targetPath)) {
@@ -70,19 +72,25 @@ class DownloadDispatcher(
                 } else {
                     arrayOf(StandardCopyOption.ATOMIC_MOVE)
                 }
+                // a cancel landing in this window would otherwise go unnoticed and the file would be moved anyway
+                coroutineContext.ensureActive()
                 Files.move(part, targetPath, *options)
                 transition(taskId, DownloadStatus.Completed)
             } catch (cancellation: CancellationException) {
-                deleteQuietly(part)
-                transition(taskId, DownloadStatus.Cancelled)
+                // rethrown so the catch below does not turn cancellation into a failure
                 throw cancellation
             } catch (failure: Exception) {
                 deleteQuietly(part)
                 transition(taskId, DownloadStatus.Failed(DownloadError.ExtractorBroken))
-            } finally {
-                jobs.remove(taskId)
-                overwriteConfirmations.remove(taskId)
             }
+        }
+        job.invokeOnCompletion { cause ->
+            if (cause is CancellationException) {
+                deleteQuietly(part)
+                transition(taskId, DownloadStatus.Cancelled)
+            }
+            jobs.remove(taskId)
+            overwriteConfirmations.remove(taskId)
         }
         jobs[taskId] = job
         job.start()
@@ -102,7 +110,9 @@ class DownloadDispatcher(
     }
 
     fun cancel(taskId: TaskId) {
-        jobs[taskId]?.cancel()
+        val job = jobs[taskId] ?: return
+        transition(taskId, DownloadStatus.Cancelling)
+        job.cancel()
     }
 
     private suspend fun awaitOverwriteConfirmation(

@@ -16,6 +16,8 @@ sealed interface DownloadStatus {
 
     data object Finalizing : DownloadStatus
 
+    data object Cancelling : DownloadStatus
+
     data object Completed : DownloadStatus
 
     data object Cancelled : DownloadStatus

@@ -2,6 +2,7 @@ package io.averkhogliad.tubeloader.core
 
 import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FreeSpec
+import io.kotest.matchers.collections.shouldContain
 import io.kotest.matchers.doubles.plusOrMinus
 import io.kotest.matchers.shouldBe
 import io.kotest.matchers.shouldNotBe
@@ -13,6 +14,7 @@ import io.kotest.property.arbitrary.long
 import io.kotest.property.arbitrary.next
 import io.kotest.property.arbitrary.string
 import kotlinx.coroutines.*
+import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
 import kotlinx.coroutines.test.runTest
@@ -569,6 +571,7 @@ class CoreFacadeTest : FreeSpec({
 
                     // when
                     world.facade.cancel(taskId)
+                    world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
 
                     // then
                     world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
@@ -929,6 +932,264 @@ class CoreFacadeTest : FreeSpec({
     }
 
     "cancel" - {
+        "publishes Cancelling while the task is stopping and Cancelled after it stopped" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val stopping = CompletableDeferred<Unit>()
+                world.adapters.single().onDownload = { _, _ ->
+                    try {
+                        CompletableDeferred<Unit>().await()
+                    } catch (cancelled: CancellationException) {
+                        withContext(NonCancellable) { stopping.await() }
+                        throw cancelled
+                    }
+                    DownloadResult.Success
+                }
+                val dir = Files.createTempDirectory(tempDir, "cancelling")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val target = request.targetPath
+                val taskId = world.facade.enqueue(resolved, request)
+                world.awaitState(taskId) { it.status == DownloadStatus.Downloading }
+
+                // when
+                world.facade.cancel(taskId)
+                val whileStopping = world.facade.downloads.value.getValue(taskId).status
+                stopping.complete(Unit)
+                world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
+
+                // then
+                whileStopping shouldBe DownloadStatus.Cancelling
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+                Files.exists(target) shouldBe false
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "cancels a task that waits for the overwrite confirmation and keeps the target file" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val dir = Files.createTempDirectory(tempDir, "cancelling-confirmation")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val target = request.targetPath
+                Files.createFile(target)
+                val taskId = world.facade.enqueue(resolved, request)
+                world.awaitState(taskId) { it.status is DownloadStatus.Interrupted }
+
+                // when
+                world.facade.cancel(taskId)
+                world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
+
+                // then
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+                Files.exists(target) shouldBe true
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "cancels a task that reached the second overwrite confirmation after Finalizing" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val dir = Files.createTempDirectory(tempDir, "finalizing-cancel")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val target = request.targetPath
+                world.adapters.single().onDownload = { _, _ ->
+                    Files.createFile(target)
+                    DownloadResult.Success
+                }
+                val taskId = world.facade.enqueue(resolved, request)
+                world.awaitState(taskId) { it.status is DownloadStatus.Interrupted }
+
+                // when
+                world.facade.cancel(taskId)
+                world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
+
+                // then
+                // the task starts with no target file, so this Interrupted is the one raised after the
+                // download finished: reaching it means the Finalizing transition has been published.
+                // Finalizing itself is conflated with it by the StateFlow, the two transitions have no
+                // suspension point between them
+                val observed = world.observedStates(taskId).map { it.status }
+                observed.first() shouldBe DownloadStatus.Queued
+                observed shouldContain DownloadStatus.Interrupted(PendingInteraction.OverwriteConfirmation(target))
+                observed.takeLast(2) shouldBe listOf(DownloadStatus.Cancelling, DownloadStatus.Cancelled)
+                world.adapters.single().downloaded.size shouldBe 1
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+                Files.exists(target) shouldBe true
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "cancels a task that has not started yet and leaves nothing behind" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld(dispatcher = StandardTestDispatcher(testScheduler))
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val dir = Files.createTempDirectory(tempDir, "cancelled-before-start")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val target = request.targetPath
+                val taskId = world.facade.enqueue(resolved, request)
+
+                // when
+                world.facade.cancel(taskId)
+
+                // then
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelling)
+                testScheduler.advanceUntilIdle()
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+                world.adapters.single().downloaded shouldBe emptyList()
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "keeps the task Completed when the cancel command arrives after the work is done" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val taskId = world.facade.enqueue(
+                    resolved,
+                    Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                )
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Completed)
+
+                // when
+                world.facade.cancel(taskId)
+
+                // then
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Completed)
+            }
+        }
+
+        "does not move the file when the adapter survives the cancellation request" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val release = CompletableDeferred<Unit>()
+                world.adapters.single().onDownload = { _, _ ->
+                    withContext(NonCancellable) { release.await() }
+                    DownloadResult.Success
+                }
+                val dir = Files.createTempDirectory(tempDir, "surviving-cancel")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val target = request.targetPath
+                val taskId = world.facade.enqueue(resolved, request)
+                world.awaitState(taskId) { it.status == DownloadStatus.Downloading }
+
+                // when
+                world.facade.cancel(taskId)
+                release.complete(Unit)
+                testScheduler.advanceUntilIdle()
+
+                // then
+                // the adapter ignored the cancellation and returned success, but the cancel command was
+                // received before the move: the finished file must not appear and the task stays cancelled
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+                Files.exists(target) shouldBe false
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "keeps Failed when the cancellation completes after the adapter broke" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val release = CompletableDeferred<Unit>()
+                world.adapters.single().onDownload = { _, _ ->
+                    withContext(NonCancellable) { release.await() }
+                    error("adapter broke")
+                }
+                val dir = Files.createTempDirectory(tempDir, "late-cancelled")
+                val request = Arb.downloadRequests(dir, ids = Arb.constant(videoId)).next()
+                val taskId = world.facade.enqueue(resolved, request)
+                world.awaitState(taskId) { it.status == DownloadStatus.Downloading }
+
+                // when
+                world.facade.cancel(taskId)
+                release.complete(Unit)
+                testScheduler.advanceUntilIdle()
+
+                // then
+                // the adapter broke after the cancellation request, so the failure is the outcome;
+                // the Cancelled of the completion handler must not overwrite it
+                world.facade.downloads.value[taskId] shouldBe DownloadState(
+                    status = DownloadStatus.Failed(DownloadError.ExtractorBroken),
+                )
+                leftoverFilesIn(request.targetPath.parent, request.targetPath) shouldBe emptyList()
+            }
+        }
+
+        "keeps the task Failed when the cancel command arrives after the adapter broke" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                world.adapters.single().onDownload = { _, _ ->
+                    DownloadResult.Failed(DownloadError.NetworkTransient)
+                }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                val taskId = world.facade.enqueue(
+                    resolved,
+                    Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                )
+                val broken = DownloadStatus.Failed(DownloadError.NetworkTransient)
+                world.facade.downloads.value.getValue(taskId).status shouldBe broken
+
+                // when
+                world.facade.cancel(taskId)
+
+                // then
+                world.facade.downloads.value.getValue(taskId).status shouldBe broken
+            }
+        }
+
+        "keeps Cancelled when the cancel command arrives again after the task stopped" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld()
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
+                world.adapters.single().onDownload = { _, _ ->
+                    CompletableDeferred<Unit>().await(); DownloadResult.Success
+                }
+                val taskId = world.facade.enqueue(
+                    resolved,
+                    Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
+                )
+                world.facade.cancel(taskId)
+                world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
+
+                // when
+                world.facade.cancel(taskId)
+
+                // then
+                world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
+            }
+        }
+
         "ends up Cancelled when the task is cancelled while downloading" {
             runTest {
                 // given
@@ -944,6 +1205,7 @@ class CoreFacadeTest : FreeSpec({
 
                 // when
                 world.facade.cancel(taskId)
+                world.awaitState(taskId) { it.status == DownloadStatus.Cancelled }
 
                 // then
                 world.facade.downloads.value[taskId] shouldBe DownloadState(DownloadStatus.Cancelled)
@@ -957,12 +1219,17 @@ class CoreFacadeTest : FreeSpec({
                 val world = facadeWorld()
                 world.adapters.single().onFind = { FindResult.Found(videoId) }
                 val resolved = world.facade.findByUrl(inputs.next()) as ResolveResult.Resolved
-                val firstStarted = CompletableDeferred<Unit>()
+                val cancelledStarted = CompletableDeferred<Unit>()
+                val survivorStarted = CompletableDeferred<Unit>()
+                val releaseSurvivor = CompletableDeferred<Unit>()
                 var downloads = 0
                 world.adapters.single().onDownload = { _, _ ->
                     if (downloads++ == 0) {
-                        firstStarted.complete(Unit)
+                        cancelledStarted.complete(Unit)
                         CompletableDeferred<Unit>().await()
+                    } else {
+                        survivorStarted.complete(Unit)
+                        releaseSurvivor.await()
                     }
                     DownloadResult.Success
                 }
@@ -970,16 +1237,21 @@ class CoreFacadeTest : FreeSpec({
                     resolved,
                 Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
                 )
-                firstStarted.await()
+                cancelledStarted.await()
 
                 // when
                 val survivor = world.facade.enqueue(
                     resolved,
                 Arb.downloadRequests(tempDir, ids = Arb.constant(videoId)).next(),
                 )
+                survivorStarted.await()
                 world.facade.cancel(cancelled)
+                world.awaitState(cancelled) { it.status == DownloadStatus.Cancelled }
 
                 // then
+                world.facade.downloads.value.getValue(survivor).status shouldBe DownloadStatus.Downloading
+                releaseSurvivor.complete(Unit)
+                world.awaitState(survivor) { it.status == DownloadStatus.Completed }
                 world.facade.downloads.value[cancelled] shouldBe DownloadState(DownloadStatus.Cancelled)
                 world.facade.downloads.value[survivor] shouldBe DownloadState(DownloadStatus.Completed)
             }
@@ -1046,8 +1318,9 @@ private fun TestScope.facadeWorld(
     mediaTool: FakeMediaTool = FakeMediaTool(),
     initialConfig: AppConfig = AppConfig(),
     taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
+    dispatcher: CoroutineDispatcher = UnconfinedTestDispatcher(testScheduler),
 ): FacadeWorld {
-    val scope = CoroutineScope(UnconfinedTestDispatcher(testScheduler))
+    val scope = CoroutineScope(dispatcher)
     val facade = CoreFacade(adapters, mediaTool, initialConfig, scope, taskIdGenerator)
     val snapshots = mutableListOf<Map<TaskId, DownloadState>>()
     scope.launch { facade.downloads.collect { snapshots += it } }
