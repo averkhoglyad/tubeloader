@@ -1,5 +1,8 @@
+import java.time.Duration
+
 plugins {
     alias(libs.plugins.kotlin.jvm)
+    alias(libs.plugins.kover)
     `java-test-fixtures`
 }
 
@@ -29,4 +32,7 @@ dependencies {
 
 tasks.test {
     useJUnitPlatform()
+    // last-resort backstop: a test blocked on its own thread is not interrupted by kotest's own
+    // timeout unless it opts into blockingTest, so this kills the task instead of hanging CI
+    timeout.set(Duration.ofMinutes(5))
 }

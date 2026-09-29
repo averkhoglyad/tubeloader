@@ -1,7 +1,7 @@
 package io.averkhogliad.tubeloader.core
 
 sealed interface ResolveResult {
-    data class Resolved(val source: Source, val videoId: String) : ResolveResult
+    data class Resolved(val ref: VideoRef) : ResolveResult
 
     data object Unsupported : ResolveResult
 

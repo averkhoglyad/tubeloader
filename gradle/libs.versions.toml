@@ -5,6 +5,7 @@ mockk = "1.14.11"
 junitPlatform = "6.1.3"
 kotlinxCoroutines = "1.11.0"
 ktoml = "0.7.1"
+kover = "0.9.11"
 
 [libraries]
 kotlinx-coroutines-core = { module = "org.jetbrains.kotlinx:kotlinx-coroutines-core", version.ref = "kotlinxCoroutines" }
@@ -19,3 +20,4 @@ junit-platform-launcher = { module = "org.junit.platform:junit-platform-launcher
 
 [plugins]
 kotlin-jvm = { id = "org.jetbrains.kotlin.jvm", version.ref = "kotlin" }
+kover = { id = "org.jetbrains.kotlinx.kover", version.ref = "kover" }

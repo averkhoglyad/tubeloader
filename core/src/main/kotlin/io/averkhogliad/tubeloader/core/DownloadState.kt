@@ -1,10 +1,13 @@
 package io.averkhogliad.tubeloader.core
 
-import java.nio.file.Path
+import kotlin.time.Instant
 
 data class DownloadState(
+    val taskId: TaskId,
     val status: DownloadStatus,
     val progress: Progress = Progress.Indeterminate,
+    val startedAt: Instant,
+    val finishedAt: Instant? = null,
 )
 
 sealed interface DownloadStatus {
@@ -23,10 +26,4 @@ sealed interface DownloadStatus {
     data object Cancelled : DownloadStatus
 
     data class Failed(val error: DownloadError) : DownloadStatus
-
-    data class Interrupted(val pending: PendingInteraction) : DownloadStatus
-}
-
-sealed interface PendingInteraction {
-    data class OverwriteConfirmation(val targetPath: Path) : PendingInteraction
 }

@@ -14,11 +14,9 @@
 Правильно:
 
 ```kotlin
-class DownloadDispatcher(
+class DownloadQueue(
     private val scope: CoroutineScope,
-    private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
-    private val register: (TaskId) -> Boolean,
-    private val transition: (TaskId, DownloadStatus) -> Unit,
+    private val limitProvider: () -> Int,
     private val onProgress: (TaskId, Progress) -> Unit,
 )
 
@@ -34,10 +32,9 @@ suspend fun downloadVideo(
 
 ```kotlin
 // колбек зажат между зависимостями и дефолтом
-class DownloadDispatcher(
+class DownloadQueue(
     private val scope: CoroutineScope,
-    private val register: (TaskId) -> Boolean,
-    private val transition: (TaskId, DownloadStatus) -> Unit,
+    private val limitProvider: () -> Int,
     private val onProgress: (TaskId, Progress) -> Unit,
     private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
 )
@@ -53,5 +50,11 @@ trailing lambda. Сначала идут параметры с дефолтам�
 ## Где применяется
 
 Швы ядра: контракт `SourceAdapter` (`core/.../SourceAdapter.kt`), порт `MediaTool`
-(`core/.../MediaTool.kt`), `DownloadDispatcher` (`core/.../DownloadDispatcher.kt`). Новый шов с
+(`core/.../MediaTool.kt`), `DownloadQueue` (`core/.../DownloadQueue.kt`). Новый шов с
 колбеком проектируется по этому правилу; отклонение фиксируется в спеке фичи или в ADR.
+
+## Sealed-типы исходов — только возврат
+
+Sealed-типы исходов (`ResolveResult`, `LoadMetaResult`, `DownloadResult`) — только типы
+возврата метода. В качестве аргумента передаётся извлечённое значение (VO), не элемент
+sealed-результата. Результат описывает исход операции, а не вход в следующую.
