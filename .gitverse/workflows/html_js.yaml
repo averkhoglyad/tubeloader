@@ -1,0 +1,40 @@
+name: GitVerse Pages Static
+
+on:
+  push:
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # Прикрепляем артефакт сборки
+      # Предполагаем, что статика лежит в корне репозитория
+      - name: Upload artifact
+        uses: actions/upload-pages-artifact@v1
+        with:
+          path: '.'
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+
+    steps:
+      # Go необходим для выполнения deploy-pages
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '>=1.23'
+
+      - name: Deploy to GitVerse Pages
+        id: deployment
+        uses: actions/deploy-pages@v1
+        with:
+          artifact_name: gitverse-pages
+
+      - name: Print deploy URL
+        run: echo "🌐 page_url = ${{ steps.deployment.outputs.page_url }}"
