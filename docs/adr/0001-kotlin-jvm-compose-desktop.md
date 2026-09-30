@@ -6,8 +6,7 @@
 
 ## Considered Options
 
-- **Kotlin/JVM + Compose Desktop** (принято): единый язык, перенос прототипа, stable API,
-  jpackage для дистрибуции. Win64-first.
+- **Kotlin/JVM + Compose Desktop** (принято): единый язык, перенос прототипа, stable API.
 - **Kotlin/JVM + Rust+gpui**: polyglot, IPC между JVM и Rust-процессом. gpui — pre-1.0,
   нет semver, docs sparse, экосистема маленькая, Windows получает core fixes в 2026.
   См. `docs/research/gpui-assessment.md`. Отклонён как high-risk.
@@ -16,7 +15,5 @@
 
 ## Consequences
 
-- Дистрибуция через jpackage (JVM bundle), не нативный бинарник.
-- Runtime JVM в поставке — больше размер, но приемлемо для десктоп-приложения.
-- Команды вниз / события вверх — через Kotlin coroutines channels/SharedFlow, без IPC.
-- Тикет 04 (стратегия Rutube) остаётся открытым — решается в `/grill-with-docs`.
+- Команды вниз / события вверх — через Kotlin coroutines `StateFlow`/`MutableStateFlow`, без IPC.
+- Способ дистрибуции и упаковки не выбран: решение отложено на конец M1 отдельным ADR.

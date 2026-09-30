@@ -7,7 +7,8 @@
 
 | Модуль | Роль |
 | --- | --- |
-| `common` | Тонкие интерфейсы конфигурации без логики; переиспользуется ядром |
+| `common` | Java platform: согласованные версии без кода |
+| `common:config` | Тонкие интерфейсы конфигурации без логики; переиспользуется ядром |
 | `core` | Headless-ядро: роутинг URL, оркестрация загрузок, нормализация прогресса и ошибок, staging |
 | Фронтенды (план) | Compose Desktop GUI (M1), mosaic TUI (M2) — тонкие клиенты: команды вниз, события вверх |
 
@@ -22,7 +23,7 @@
 
 | Технология | Роль |
 | --- | --- |
-| ktoml | Чтение TOML-конфигурации приложения; только ktoml-core в runtime, API-тонкости в памяти сессий |
+| ktoml | Чтение TOML-конфигурации приложения: `ktoml-core` и `ktoml-file` |
 
 ## GUI
 
@@ -37,6 +38,7 @@
 | kotest | Runner (JUnit6), property-тесты: `Arb`/`Exhaustive`/`checkAll` | `docs/standards/testing.md` |
 | mockk | Моки: query-методы заглушаются, command-методы верифицируются с `capture` | `docs/standards/testing.md` |
 | JUnit Platform launcher | Тестовая платформа Gradle | — |
+| Kover | Покрытие в `:core` и `:common:config`; без гейта | — |
 
 ## Внешние инструменты
 

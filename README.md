@@ -1,4 +1,4 @@
-# TubeLoader
+# Tubeloader
 
 Desktop download manager for video and audio from multiple sources.
 
@@ -13,14 +13,22 @@ core: commands in, events out.
 
 ## Goals
 
-- High-quality downloads: video-only + audio-only + mux.
+- High-quality downloads: video-only + mux. Audio-only is planned for M2.
 - YouTube and Rutube out of the box.
-- Extensibility: a new source is configuration plus, optionally, a custom extractor.
+- Extensibility: a new source is a statically registered `SourceAdapter` implementation behind
+  the core contract.
 - Replaceable loader implementations: yt-dlp, native scrapers, and future alternatives behind the
   same port.
 - Low friction for the user: no manual cookie copying, no Python or Node.js to install.
 - Resilience to source changes: backend tools are updated independently of an app release.
-- Cross-platform: Windows, Linux, macOS.
+- Cross-platform: Windows, Linux, macOS — Windows first.
+
+## Status
+
+Core M1 is implemented: a headless core (`:common`, `:common:config`, `:core`) with the
+`SourceAdapter` contract, the `MediaTool`/`HttpTool` ports, the download queue, cancellation and
+clean shutdown. No frontend and no entry point yet; source adapters are separate specs. Packaging
+and distribution are postponed to a dedicated ADR at the end of M1.
 
 ## Non-goals
 
