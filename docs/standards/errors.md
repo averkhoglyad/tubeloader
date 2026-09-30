@@ -17,7 +17,7 @@
 **Бизнесовая ошибка.** Ожидаемый исход, который вызывающий обязан разобрать: «не найдено»,
 «временная сеть», «протух URL», «поломка экстрактора». Возвращается значением — вызывающий
 разбирает исход, а не ловит исключение. Форма: sealed-тип исхода операции — `ResolveResult`
-(`Resolved(VideoRef)` / `Unsupported` / `NotFound`), `FindResult`
+(`Resolved(MediaRef)` / `Unsupported` / `NotFound`), `FindResult`
 (`Found` / `Unsupported` / `NotFound`), `LoadMetaResult` (`Found` / `NotFound`),
 `DownloadResult` (`Success` / `Failed(error)`).
 

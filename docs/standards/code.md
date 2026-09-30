@@ -21,8 +21,8 @@ class DownloadQueue(
     private val config: StateFlow<AppConfig>,
 )
 
-suspend fun downloadVideo(
-    id: String,
+suspend fun download(
+    mediaId: String,
     quality: Quality,
     targetPath: Path,
     onProgress: (SourceProgress) -> Unit,
