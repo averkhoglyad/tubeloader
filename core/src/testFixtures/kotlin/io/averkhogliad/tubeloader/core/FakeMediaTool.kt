@@ -16,6 +16,8 @@ class FakeMediaTool : MediaTool {
     val muxCalls = mutableListOf<MuxCall>()
     val remuxCalls = mutableListOf<RemuxCall>()
 
+    override fun close() = Unit
+
     override suspend fun mux(
         video: Path,
         audio: Path,

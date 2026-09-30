@@ -1,5 +1,6 @@
 package io.averkhogliad.tubeloader.core
 
+import java.io.Closeable
 import java.nio.file.Path
 
 /**
@@ -8,8 +9,11 @@ import java.nio.file.Path
  *
  * Cancelling the coroutine an operation runs in interrupts it: the implementation kills the whole
  * process tree of the tool it started, orphaned children are not allowed.
+ *
+ * Closing is for what outlives a coroutine — an idle process, a warm pool. It is idempotent and
+ * bounded; the owner of the tool calls it after the work has stopped.
  */
-interface MediaTool {
+interface MediaTool : Closeable {
     /**
      * Joins one video track and one audio track into a single file by copying both streams.
      */

@@ -1,12 +1,16 @@
 package io.averkhogliad.tubeloader.core
 
+import java.io.Closeable
 import java.io.InputStream
 
 /**
  * Core port for reading content over HTTP. An adapter never picks a client library: it asks this
  * port to open a resource and copies the bytes itself.
+ *
+ * Closing is for what outlives a coroutine — the connection pool. It is idempotent and bounded; the
+ * owner of the port calls it after the work has stopped.
  */
-interface HttpTool {
+interface HttpTool : Closeable {
     /**
      * Opens the body of [url] for reading. [headers] carries what the source requires (for example
      * a referer). The returned body is owned by the caller and must be closed by it.

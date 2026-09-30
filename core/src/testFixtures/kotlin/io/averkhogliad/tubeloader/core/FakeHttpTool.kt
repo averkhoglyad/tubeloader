@@ -13,6 +13,8 @@ class FakeHttpTool : HttpTool {
 
     val opened = mutableListOf<OpenCall>()
 
+    override fun close() = Unit
+
     override suspend fun open(url: String, headers: Map<String, String>): HttpBody {
         opened += OpenCall(url, headers)
         return onOpen(url, headers)

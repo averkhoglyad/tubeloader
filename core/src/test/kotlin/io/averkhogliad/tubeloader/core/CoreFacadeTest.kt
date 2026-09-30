@@ -18,6 +18,8 @@ import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.NonCancellable
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.UnconfinedTestDispatcher
@@ -263,8 +265,8 @@ class CoreFacadeTest : FreeSpec({
                 world.state(queued.taskId).status shouldBe DownloadStatus.Queued
                 withTimeout(1.seconds) { world.facade.findByUrl(inputs.next()) }
                     .shouldBeInstanceOf<ResolveResult.Resolved>()
-                withTimeout(1.seconds) { world.facade.setConfig(AppConfig(maxParallelDownloads = 2)) }
-                world.facade.config.value.maxParallelDownloads shouldBe 2
+                withTimeout(1.seconds) { world.config.value = AppConfig(maxParallelDownloads = 2) }
+                world.config.value.maxParallelDownloads shouldBe 2
                 world.state(running.taskId).status shouldBe DownloadStatus.Downloading
                 release.complete(Unit)
                 world.awaitState(running.taskId) { it.status == DownloadStatus.Completed }
@@ -708,6 +710,134 @@ class CoreFacadeTest : FreeSpec({
                 }
             }
         }
+
+        "refuses to enqueue after the queue stopped and does not keep the reservation" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld(tempDir, taskIdGenerator = TaskIdGenerator { TaskId(1) })
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val ref = world.resolve(videoId)
+                world.queue.shutdown(5.seconds) shouldBe true
+
+                // when
+                val refused = shouldThrow<IllegalStateException> { world.enqueue(ref) }
+
+                // then
+                // the reservation is rolled back, so the next attempt fails on the closed queue again
+                // instead of exhausting the id attempts over a record left in the states map
+                refused.message shouldContain "closed"
+                shouldThrow<IllegalStateException> { world.enqueue(ref) }.message shouldContain "closed"
+                world.adapters.single().downloaded shouldBe emptyList()
+            }
+        }
+
+        "refuses to enqueue when the parent scope died and does not leave the task in Queued" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld(tempDir)
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val ref = world.resolve(videoId)
+
+                // when the assembly cancels the scope it owns
+                world.parentScope.cancel()
+
+                // then
+                val refused = shouldThrow<IllegalStateException> { world.enqueue(ref) }
+                refused.message shouldContain "closed"
+                world.adapters.single().downloaded shouldBe emptyList()
+            }
+        }
+    }
+
+    "shutdown" - {
+
+        "cancels the running download and leaves no partial behind" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld(tempDir)
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val ref = world.resolve(videoId)
+                val target = world.targetPath()
+                val started = CompletableDeferred<Unit>()
+                world.adapters.single().onDownload = { _, _ ->
+                    started.complete(Unit)
+                    CompletableDeferred<Unit>().await()
+                    DownloadResult.Success
+                }
+                val handle = world.enqueue(ref, target)
+                started.await()
+                world.state(handle.taskId).status shouldBe DownloadStatus.Downloading
+
+                // when
+                val stopped = world.queue.shutdown(5.seconds)
+
+                // then
+                stopped shouldBe true
+                world.awaitState(handle.taskId) { it.status == DownloadStatus.Cancelled }
+                world.state(handle.taskId).status shouldBe DownloadStatus.Cancelled
+                Files.exists(target) shouldBe false
+                leftoverFilesIn(target.parent, target) shouldBe emptyList()
+            }
+        }
+
+        "cancels the download that waited for a slot" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld(tempDir, initialConfig = AppConfig(maxParallelDownloads = 1))
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val ref = world.resolve(videoId)
+                val gate = CompletableDeferred<Unit>()
+                world.adapters.single().onDownload = { _, _ -> gate.await(); DownloadResult.Success }
+                val running = world.enqueue(ref)
+                val queued = world.enqueue(ref)
+                world.awaitState(running.taskId) { it.status == DownloadStatus.Downloading }
+                world.state(queued.taskId).status shouldBe DownloadStatus.Queued
+
+                // when
+                val stopped = world.queue.shutdown(5.seconds)
+
+                // then
+                stopped shouldBe true
+                world.awaitState(queued.taskId) { it.status == DownloadStatus.Cancelled }
+                world.state(queued.taskId).status shouldBe DownloadStatus.Cancelled
+                world.awaitState(running.taskId) { it.status == DownloadStatus.Cancelled }
+                world.state(running.taskId).status shouldBe DownloadStatus.Cancelled
+            }
+        }
+
+        "leaves no trace of the stopped session for the next start" {
+            runTest {
+                // given
+                val videoId = videoIds.next()
+                val world = facadeWorld(tempDir)
+                world.adapters.single().onFind = { FindResult.Found(videoId) }
+                val ref = world.resolve(videoId)
+                val interrupted = world.targetPath()
+                world.adapters.single().onDownload = { _, _ ->
+                    CompletableDeferred<Unit>().await()
+                    DownloadResult.Success
+                }
+                val handle = world.enqueue(ref, interrupted)
+                world.awaitState(handle.taskId) { it.status == DownloadStatus.Downloading }
+                world.queue.shutdown(5.seconds) shouldBe true
+
+                // when the assembly builds a fresh core over the same directories
+                val restarted = facadeWorld(world.tempDir)
+                restarted.adapters.single().onFind = { FindResult.Found(videoId) }
+                val target = restarted.targetPath()
+                val next = restarted.enqueue(restarted.resolve(videoId), target)
+
+                // then
+                partialsIn(world.tempDir) shouldBe emptyList()
+                restarted.awaitState(next.taskId) { it.status == DownloadStatus.Completed }
+                restarted.state(next.taskId).status shouldBe DownloadStatus.Completed
+                Files.exists(target) shouldBe true
+            }
+        }
     }
 
     "cancel" - {
@@ -969,40 +1099,7 @@ class CoreFacadeTest : FreeSpec({
         }
     }
 
-    "setConfig" - {
-        "exposes the initial config on the StateFlow" {
-            runTest {
-                // given
-                val initial = AppConfig(
-                    maxParallelDownloads = 2,
-                    defaultTargetDir = Path.of("D:/vid"),
-                )
-                val world = facadeWorld(tempDir, initialConfig = initial)
-
-                // when
-                val actual = world.facade.config.value
-
-                // then
-                actual shouldBe initial
-            }
-        }
-
-        "replaces the config in runtime" {
-            runTest {
-                // given
-                val world = facadeWorld(tempDir)
-                val updated = AppConfig(
-                    maxParallelDownloads = 5,
-                    defaultTargetDir = Path.of("E:/media"),
-                )
-
-                // when
-                world.facade.setConfig(updated)
-
-                // then
-                world.facade.config.value shouldBe updated
-            }
-        }
+    "config" - {
 
         "starts the tasks that waited on the old limit" {
             runTest {
@@ -1027,7 +1124,7 @@ class CoreFacadeTest : FreeSpec({
                 started shouldBe 1
 
                 // when
-                world.facade.setConfig(AppConfig(maxParallelDownloads = 3))
+                world.config.value = AppConfig(maxParallelDownloads = 3)
                 testScheduler.advanceUntilIdle()
 
                 // then
@@ -1043,6 +1140,9 @@ class CoreFacadeTest : FreeSpec({
 private class FacadeWorld(
     rootDir: Path,
     val adapters: List<FakeSourceAdapter>,
+    val config: MutableStateFlow<AppConfig>,
+    val parentScope: CoroutineScope,
+    val queue: DownloadQueue,
     val facade: CoreFacade,
 ) {
     val tempDir: Path = Files.createTempDirectory(rootDir, "case")
@@ -1095,12 +1195,17 @@ private fun facadeWorld(
     workContext: CoroutineContext = dispatcher,
 ): FacadeWorld {
     val scope = CoroutineScope(dispatcher)
-    val facade = CoreFacade(adapters, initialConfig, scope, workContext, taskIdGenerator, clock)
-    return FacadeWorld(tempDir, adapters, facade)
+    val config = MutableStateFlow(initialConfig)
+    val queue = DownloadQueue(scope, dispatcher, workContext, config)
+    val facade = CoreFacade(adapters, queue, taskIdGenerator, clock)
+    return FacadeWorld(tempDir, adapters, config, scope, queue, facade)
 }
 
 private fun leftoverFilesIn(dir: Path, expected: Path): List<Path> =
     Files.newDirectoryStream(dir).use { entries -> entries.filter { it != expected } }
+
+private fun partialsIn(dir: Path): List<Path> =
+    Files.newDirectoryStream(dir).use { entries -> entries.filter { it.fileName.toString().contains(".part-") } }
 
 private val DownloadStatus.isTerminal: Boolean
     get() = this is DownloadStatus.Completed || this is DownloadStatus.Cancelled || this is DownloadStatus.Failed

@@ -1,22 +1,29 @@
 package io.averkhogliad.tubeloader.core
 
+import io.kotest.assertions.throwables.shouldThrow
 import io.kotest.core.spec.style.FreeSpec
 import io.kotest.matchers.shouldBe
+import io.kotest.matchers.string.shouldContain
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.CoroutineExceptionHandler
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.asCoroutineDispatcher
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
 import kotlinx.coroutines.test.runTest
+import kotlinx.coroutines.withContext
 import java.util.concurrent.CountDownLatch
 import java.util.concurrent.Executors
 import java.util.concurrent.TimeUnit
 import java.util.concurrent.atomic.AtomicInteger
 import kotlin.coroutines.CoroutineContext
+import kotlin.time.Duration
+import kotlin.time.Duration.Companion.milliseconds
 import kotlin.time.Duration.Companion.seconds
 
 @OptIn(ExperimentalCoroutinesApi::class)
@@ -27,7 +34,7 @@ class DownloadQueueTest : FreeSpec({
         "runs no more tasks at once than the current limit" {
             runTest {
                 // given
-                val queue = downloadQueue { 2 }
+                val queue = downloadQueue(config(2))
                 val log = StartLog()
 
                 // when
@@ -49,7 +56,7 @@ class DownloadQueueTest : FreeSpec({
         "starts the waiting tasks in submission order" {
             runTest {
                 // given
-                val queue = downloadQueue { 1 }
+                val queue = downloadQueue(config(1))
                 val log = StartLog()
 
                 // when
@@ -84,7 +91,7 @@ class DownloadQueueTest : FreeSpec({
                 // given
                 val workers = Executors.newFixedThreadPool(2)
                 try {
-                    val queue = downloadQueue({ 2 }, workers.asCoroutineDispatcher())
+                    val queue = downloadQueue(config(2), workers.asCoroutineDispatcher())
                     val inside = CountDownLatch(2)
                     val concurrent = AtomicInteger()
                     val maxConcurrent = AtomicInteger()
@@ -120,7 +127,7 @@ class DownloadQueueTest : FreeSpec({
                     SupervisorJob() + dispatcher +
                         CoroutineExceptionHandler { _, throwable -> thrown.complete(throwable) },
                 )
-                val queue = DownloadQueue(scope, dispatcher) { 1 }
+                val queue = DownloadQueue(scope, dispatcher, dispatcher, config(1))
                 val log = StartLog()
 
                 // when
@@ -139,7 +146,7 @@ class DownloadQueueTest : FreeSpec({
         "frees the slot when the running work is cancelled" {
             runTest {
                 // given
-                val queue = downloadQueue { 1 }
+                val queue = downloadQueue(config(1))
                 val log = StartLog()
                 val running = queue.submit(log.work(0))
                 queue.submit(log.work(1))
@@ -167,7 +174,7 @@ class DownloadQueueTest : FreeSpec({
                 val workers = Executors.newFixedThreadPool(2)
                 val blocked = CountDownLatch(1)
                 try {
-                    val queue = downloadQueue({ 1 }, workers.asCoroutineDispatcher())
+                    val queue = downloadQueue(config(1), workers.asCoroutineDispatcher())
                     val inside = CountDownLatch(1)
                     val windingDown = queue.submit {
                         inside.countDown()
@@ -198,7 +205,7 @@ class DownloadQueueTest : FreeSpec({
         "skips a waiter that was cancelled before it got a slot" {
             runTest {
                 // given
-                val queue = downloadQueue { 1 }
+                val queue = downloadQueue(config(1))
                 val log = StartLog()
                 queue.submit(log.work(0))
                 val waiting = queue.submit(log.work(1))
@@ -219,21 +226,20 @@ class DownloadQueueTest : FreeSpec({
         }
     }
 
-    "limitChanged" - {
+    "config" - {
 
         "starts the waiting tasks when the limit is raised" {
             runTest {
                 // given
-                var limit = 1
-                val queue = downloadQueue { limit }
+                val config = MutableStateFlow(AppConfig(maxParallelDownloads = 1))
+                val queue = downloadQueue(config)
                 val log = StartLog()
                 (0..2).forEach { queue.submit(log.work(it)) }
                 testScheduler.advanceUntilIdle()
                 log.order shouldBe listOf(0)
 
                 // when
-                limit = 3
-                queue.limitChanged()
+                config.value = AppConfig(maxParallelDownloads = 3)
                 testScheduler.advanceUntilIdle()
 
                 // then
@@ -246,16 +252,15 @@ class DownloadQueueTest : FreeSpec({
         "does not preempt the running tasks when the limit is lowered" {
             runTest {
                 // given
-                var limit = 2
-                val queue = downloadQueue { limit }
+                val config = MutableStateFlow(AppConfig(maxParallelDownloads = 2))
+                val queue = downloadQueue(config)
                 val log = StartLog()
                 (0..3).forEach { queue.submit(log.work(it)) }
                 testScheduler.advanceUntilIdle()
                 log.order shouldBe listOf(0, 1)
 
                 // when
-                limit = 1
-                queue.limitChanged()
+                config.value = AppConfig(maxParallelDownloads = 1)
                 testScheduler.advanceUntilIdle()
 
                 // then the running tasks are left alone and no new slot is handed out
@@ -263,6 +268,95 @@ class DownloadQueueTest : FreeSpec({
                 log.releaseAll()
                 testScheduler.advanceUntilIdle()
                 log.order shouldBe listOf(0, 1, 2, 3)
+            }
+        }
+    }
+
+    "construction" - {
+
+        "rejects a work context that carries its own job" {
+            runTest {
+                // given a context whose job would outlive the queue and dodge its shutdown
+                val escaping = StandardTestDispatcher(testScheduler) + SupervisorJob()
+
+                // when + then
+                shouldThrow<IllegalArgumentException> {
+                    DownloadQueue(
+                        CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+                        StandardTestDispatcher(testScheduler),
+                        escaping,
+                        config(1),
+                    )
+                }.message shouldContain "workContext"
+            }
+        }
+    }
+
+    "shutdown" - {
+
+        "stops the running and the waiting work" {
+            runTest {
+                // given
+                val queue = downloadQueue(config(1))
+                val log = StartLog()
+                val running = queue.submit(log.work(0))
+                val waiting = queue.submit(log.work(1))
+                testScheduler.advanceUntilIdle()
+                log.order shouldBe listOf(0)
+
+                // when
+                val stopped = queue.shutdown(5.seconds)
+
+                // then
+                stopped shouldBe true
+                running.isCompleted shouldBe true
+                waiting.isCompleted shouldBe true
+            }
+        }
+
+        "reports false when the work ignores the cancellation past the budget" {
+            runTest {
+                // given
+                val queue = downloadQueue(config(1))
+                val release = CompletableDeferred<Unit>()
+                val running = queue.submit { withContext(NonCancellable) { release.await() } }
+                testScheduler.advanceUntilIdle()
+                val beforeShutdown = testScheduler.currentTime
+
+                // when
+                val stopped = queue.shutdown(50.milliseconds)
+
+                // then
+                stopped shouldBe false
+                // shutdown really waited out the budget instead of giving up at once
+                (testScheduler.currentTime - beforeShutdown) shouldBe 50
+
+                // the work outlived the budget and ends only when it lets go on its own
+                release.complete(Unit)
+                testScheduler.advanceUntilIdle()
+                running.isCompleted shouldBe true
+            }
+        }
+
+        "reports true for an idle queue even with a zero budget" {
+            runTest {
+                // given
+                val queue = downloadQueue(config(1))
+
+                // when + then
+                queue.shutdown(Duration.ZERO) shouldBe true
+            }
+        }
+
+        "is idempotent and refuses new work afterwards" {
+            runTest {
+                // given
+                val queue = downloadQueue(config(1))
+                queue.shutdown(5.seconds) shouldBe true
+
+                // when + then
+                queue.shutdown(5.seconds) shouldBe true
+                shouldThrow<IllegalStateException> { queue.submit {} }.message shouldContain "closed"
             }
         }
     }
@@ -292,10 +386,21 @@ private class StartLog {
     private fun gate(index: Int) = gates.getOrPut(index) { CompletableDeferred() }
 }
 
-private fun TestScope.downloadQueue(limit: () -> Int): DownloadQueue {
+private fun config(maxParallelDownloads: Int): MutableStateFlow<AppConfig> =
+    MutableStateFlow(AppConfig(maxParallelDownloads = maxParallelDownloads))
+
+private fun TestScope.downloadQueue(config: MutableStateFlow<AppConfig>): DownloadQueue {
     val dispatcher = StandardTestDispatcher(testScheduler)
-    return DownloadQueue(CoroutineScope(SupervisorJob() + dispatcher), dispatcher, limit)
+    return DownloadQueue(CoroutineScope(SupervisorJob() + dispatcher), dispatcher, dispatcher, config)
 }
 
-private fun TestScope.downloadQueue(limit: () -> Int, workContext: CoroutineContext): DownloadQueue =
-    DownloadQueue(CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)), workContext, limit)
+private fun TestScope.downloadQueue(
+    config: MutableStateFlow<AppConfig>,
+    workContext: CoroutineContext,
+): DownloadQueue =
+    DownloadQueue(
+        CoroutineScope(SupervisorJob() + StandardTestDispatcher(testScheduler)),
+        StandardTestDispatcher(testScheduler),
+        workContext,
+        config,
+    )

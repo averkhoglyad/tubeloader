@@ -19,7 +19,6 @@ class DownloadQueue(
     private val dispatcher: CoroutineDispatcher,
     private val workContext: CoroutineContext,
     private val config: StateFlow<AppConfig>,
-    private val onProgress: (TaskId, Progress) -> Unit,
 )
 
 suspend fun downloadVideo(

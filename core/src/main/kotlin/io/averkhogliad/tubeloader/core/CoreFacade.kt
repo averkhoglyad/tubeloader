@@ -1,9 +1,6 @@
 package io.averkhogliad.tubeloader.core
 
 import kotlinx.coroutines.CancellationException
-import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -15,17 +12,14 @@ import kotlinx.coroutines.yield
 import java.nio.file.Files
 import java.nio.file.Path
 import java.nio.file.StandardCopyOption
-import kotlin.coroutines.CoroutineContext
 import kotlin.coroutines.coroutineContext
 import kotlin.time.Clock
 import kotlin.time.Instant
 
 class CoreFacade(
     private val adapters: List<SourceAdapter>,
-    initialConfig: AppConfig = AppConfig(),
-    private val scope: CoroutineScope = CoroutineScope(SupervisorJob() + Dispatchers.Default.limitedParallelism(1)),
-    private val workContext: CoroutineContext = Dispatchers.IO,
-    private val taskIdGenerator: TaskIdGenerator = RandomTaskIdGenerator,
+    private val queue: DownloadQueue,
+    private val taskIdGenerator: TaskIdGenerator,
     private val clock: Clock = Clock.System,
 ) {
     private val sources: List<Source> = adapters.mapIndexed { index, adapter ->
@@ -39,11 +33,6 @@ class CoreFacade(
 
     private val _states = MutableStateFlow<Map<TaskId, DownloadState>>(emptyMap())
     private val states: StateFlow<Map<TaskId, DownloadState>> = _states.asStateFlow()
-
-    private val _config = MutableStateFlow(initialConfig)
-    val config: StateFlow<AppConfig> = _config.asStateFlow()
-
-    private val queue = DownloadQueue(scope, workContext) { _config.value.maxParallelDownloads }
 
     suspend fun findByUrl(input: String): ResolveResult {
         val matches = mutableListOf<VideoRef>()
@@ -88,7 +77,12 @@ class CoreFacade(
         }
         val startedAt = clock.now()
         val taskId = allocateTaskId(startedAt)
-        val job = queue.submit { runDownload(taskId, adapter, ref.videoId, quality, targetPath) }
+        val job = try {
+            queue.submit { runDownload(taskId, adapter, ref.videoId, quality, targetPath) }
+        } catch (refused: IllegalStateException) {
+            forget(taskId)
+            throw refused
+        }
         job.invokeOnCompletion { cause ->
             if (cause is CancellationException) {
                 transition(taskId, DownloadStatus.Cancelled)
@@ -98,11 +92,6 @@ class CoreFacade(
             transition(taskId, DownloadStatus.Cancelling)
             job.cancel()
         }
-    }
-
-    fun setConfig(config: AppConfig) {
-        _config.value = config
-        queue.limitChanged()
     }
 
     private suspend fun runDownload(
@@ -161,6 +150,10 @@ class CoreFacade(
             if (taskId in current) return false
             if (_states.compareAndSet(current, current + (taskId to initial))) return true
         }
+    }
+
+    private fun forget(taskId: TaskId) {
+        _states.update { it - taskId }
     }
 
     private fun transition(taskId: TaskId, status: DownloadStatus) {
