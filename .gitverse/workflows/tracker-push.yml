@@ -19,11 +19,13 @@ jobs:
         run: |
           zero=0000000000000000000000000000000000000000
           after="${AFTER:-$HEAD_SHA}"
+          main_ref=$(git rev-parse --verify --quiet refs/remotes/origin/main || true)
           range=(-1)
-          if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] && [ -n "$after" ]; then
+          if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] && [ -n "$after" ] &&
+             git rev-parse --verify --quiet "${BEFORE}^{commit}" > /dev/null; then
             range=("$BEFORE..$after")
-          elif [ -n "$after" ] && git rev-parse --verify --quiet refs/remotes/origin/main > /dev/null; then
-            # before нулевой — push новой ветки, точка отсчёта main
+          elif [ -n "$after" ] && [ -n "$main_ref" ] && [ "$after" != "$main_ref" ]; then
+            # before нулевой или недостижимый (переписанная история) — точка отсчёта main
             range=("$after" --not refs/remotes/origin/main)
           fi
           echo "range=${range[*]}"
