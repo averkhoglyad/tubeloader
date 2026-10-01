@@ -137,19 +137,6 @@ function splitList(value) {
     .filter(Boolean);
 }
 
-function allLabels() {
-  return Object.values(config.labels).flat();
-}
-
-function knownLabel(name) {
-  const match = allLabels().find((label) => label.name === name);
-  if (!match) {
-    const names = allLabels().map((label) => label.name).join(', ');
-    throw new Error(`Unknown label "${name}". Known labels: ${names}`);
-  }
-  return name;
-}
-
 function summarize(issue) {
   const labels = (issue.labels ?? []).map((label) => label.name).join(',');
   const assignees = (issue.assignees ?? []).map((user) => user.login).join(',');
@@ -184,7 +171,6 @@ commands.help = async () => {
   issue reopen  N
 
   label list
-  label ensure
 
   block   N --by M       mark N blocked by M
   unblock N --by M
@@ -199,7 +185,7 @@ commands.help = async () => {
   claim   N              assign N to yourself
   unclaim N
   resolve N --body-file F | --body B     comment + close
-  frontier [--map N] [--label L]         open, unassigned, unblocked issues
+  frontier --map N | --label L          open, unassigned, unblocked issues
 
 Bodies and comments: prefer --body-file / --comment-file. Multi-line markdown through a
 shell argument breaks on quoting far more often than a file does.`);
@@ -220,7 +206,7 @@ commands['issue create'] = async ({ flags }) => {
   const payload = { title: flags.title };
   const body = bodyFrom(flags);
   if (body !== undefined) payload.body = body;
-  if (flags.label) payload.labels = splitList(flags.label).map(knownLabel);
+  if (flags.label) payload.labels = splitList(flags.label);
   if (flags.assignee) payload.assignees = splitList(flags.assignee);
   if (flags.milestone) payload.milestone = Number(flags.milestone);
   if (!payload.title) throw new Error('issue create requires --title');
@@ -265,7 +251,7 @@ commands['issue edit'] = async ({ positional, flags }) => {
   if (flags.title) payload.title = flags.title;
   const body = bodyFrom(flags);
   if (body !== undefined) payload.body = body;
-  if (flags['add-label']) payload.labels = splitList(flags['add-label']).map(knownLabel);
+  if (flags['add-label']) payload.labels = splitList(flags['add-label']);
   if (flags.state) payload.state = flags.state;
   if (flags.reason) payload.state_reason = flags.reason;
 
@@ -310,26 +296,6 @@ commands['issue reopen'] = async ({ positional }) => {
 commands['label list'] = async () => {
   const labels = await request('GET', `${repoPath}/labels?per_page=100`);
   for (const label of labels) console.log(`${label.name}\t#${label.color}\t${label.description ?? ''}`);
-};
-
-commands['label ensure'] = async () => {
-  const existing = new Map(
-    (await request('GET', `${repoPath}/labels?per_page=100`)).map((label) => [label.name, label])
-  );
-  for (const label of allLabels()) {
-    const current = existing.get(label.name);
-    if (!current) {
-      await request('POST', `${repoPath}/labels`, label);
-      console.log(`created ${label.name}`);
-      continue;
-    }
-    if (current.color !== label.color || current.description !== label.description) {
-      await request('PATCH', `${repoPath}/labels/${encodeURIComponent(label.name)}`, label);
-      console.log(`updated ${label.name}`);
-      continue;
-    }
-    console.log(`ok      ${label.name}`);
-  }
 };
 
 commands.block = async ({ positional, flags }) => {
@@ -417,7 +383,12 @@ async function scope({ flags }) {
     return (await request('GET', `${issuePath(parent)}/sub_issues?per_page=100`)).map((issue) => issue.number);
   }
   const params = new URLSearchParams({ state: 'open', per_page: '100' });
-  params.set('labels', knownLabel(flags.label ?? config.defaultStateLabel));
+  if (!flags.label) {
+    throw new Error(
+      'frontier requires --label L, or --map N. The default label is a flow rule, not a tool default.'
+    );
+  }
+  params.set('labels', flags.label);
   const issues = await request('GET', `${repoPath}/issues?${params}`);
   return issues.filter((issue) => !isPullRequest(issue)).map((issue) => issue.number);
 }

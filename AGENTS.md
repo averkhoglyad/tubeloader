@@ -50,13 +50,13 @@ Testing Decisions спеки фичи (`docs/features/<feature>/spec.md`).
 
 ### Issue tracker
 
-Задачи — локальный markdown в `etc/issues/<feature>/NN-<slug>.md`; человеческий индекс —
-`etc/issues/INDEX.md`, обновляется при добавлении, изменении и смене статуса.
+Задачи — issue в GitHub-репозитории `averkhogliad/tube-loader`. Скрипт —
+`scripts/tracker/tracker.mjs` (REST + PAT), вместо `gh`.
 См. `docs/agents/issue-tracker.md`.
 
 ### Triage labels
 
-Дефолтные пять ролей без переименований. См. `docs/agents/triage-labels.md`.
+Словарь меток и их назначение — `docs/agents/triage-labels.md`.
 
 ### Domain docs
 

@@ -2,26 +2,5 @@
   "owner": "averkhogliad",
   "repo": "tube-loader",
   "apiVersion": "2022-11-28",
-  "tokenEnv": "GITHUB_TOKEN",
-  "defaultStateLabel": "ready-for-agent",
-  "labels": {
-    "categories": [
-      { "name": "bug", "color": "d73a4a", "description": "Something is broken" },
-      { "name": "enhancement", "color": "a2eeef", "description": "New feature or improvement" }
-    ],
-    "states": [
-      { "name": "needs-triage", "color": "fbca04", "description": "Maintainer needs to evaluate" },
-      { "name": "needs-info", "color": "d4c5f9", "description": "Waiting on reporter for more information" },
-      { "name": "ready-for-agent", "color": "0e8a16", "description": "Fully specified, ready for an AFK agent" },
-      { "name": "ready-for-human", "color": "1d76db", "description": "Requires human implementation" },
-      { "name": "wontfix", "color": "ffffff", "description": "Will not be actioned" }
-    ],
-    "wayfinder": [
-      { "name": "wayfinder:map", "color": "5319e7", "description": "Wayfinder map" },
-      { "name": "wayfinder:research", "color": "c2e0c6", "description": "Wayfinder research ticket" },
-      { "name": "wayfinder:prototype", "color": "bfdadc", "description": "Wayfinder prototype ticket" },
-      { "name": "wayfinder:grilling", "color": "d4c5f9", "description": "Wayfinder grilling ticket" },
-      { "name": "wayfinder:task", "color": "fef2c0", "description": "Wayfinder task ticket" }
-    ]
-  }
+  "tokenEnv": "GITHUB_TOKEN"
 }

@@ -1,60 +1,79 @@
-# Issue tracker: локальный markdown
+# Issue tracker: GitHub Issues
 
-Задачи живут markdown-файлами в этом репозитории, в `etc/issues/`. Спека — отдельно, в `docs/`.
+Задачи живут issue в GitHub-репозитории `averkhogliad/tube-loader`. Спека — отдельно, в `docs/`.
+Общение с трекером идёт скриптом `scripts/tracker/tracker.mjs`, а не `gh`: на этой машине `gh`
+нет, и он не нужен — скрипт ходит в REST по PAT из переменной окружения.
 
-## Конвенции
-
-- Фича — директория: `etc/issues/<feature>/`
-- Тикет — один файл: `etc/issues/<feature>/NN-<slug>.md`, нумерация с `01` в порядке зависимостей,
-  блокеры первыми. Никогда не один общий файл на все тикеты.
-- Человеческий индекс — `etc/issues/INDEX.md`. Обязателен к обновлению при добавлении, изменении
-  и смене статуса фичи или тикета. Агент читает статусы из шапок тикетов, индекс ему не нужен.
-- Спека — `docs/features/<feature>/spec.md`. См. [specs.md](specs.md).
-
-## Шапка тикета
+## Команды
 
 ```
-# NN: <Title>
+node scripts/tracker/tracker.mjs check
+node scripts/tracker/tracker.mjs issue create --title T --body-file F --label ready-for-agent
+node scripts/tracker/tracker.mjs issue view 15 --comments
+node scripts/tracker/tracker.mjs issue list --state open --label ready-for-agent
+node scripts/tracker/tracker.mjs issue edit 15 --add-label needs-info --remove-label ready-for-agent
+node scripts/tracker/tracker.mjs issue comment 15 --body-file F
+node scripts/tracker/tracker.mjs issue close 15 --comment-file F --reason completed
+node scripts/tracker/tracker.mjs label list
+node scripts/tracker/tracker.mjs block 17 --by 15
+node scripts/tracker/tracker.mjs sub add 20 --to 19
+node scripts/tracker/tracker.mjs claim 15
+node scripts/tracker/tracker.mjs resolve 15 --body-file F
+node scripts/tracker/tracker.mjs frontier --label ready-for-agent
+```
 
+`--body` и `--comment` принимают одну строку; для markdown использовать `--body-file`.
+Многострочный markdown через аргумент шелла ломается на кавычках чаще, чем файл.
+
+## Словарь меток
+
+Набор меток репозитория и их смысл — [triage-labels.md](triage-labels.md). Скрипт словаря не
+знает: `--label` уходит в трекер как есть. Опечатка создаст новую метку.
+
+## Тело тикета
+
+```
 **Spec:** docs/features/<feature>/spec.md
-**Blocked by:** NN, NN | None (can start immediately)
-**Status:** ready-for-agent
+
+## What to build
+## Acceptance criteria
+## Blocked by
 ```
 
-Комментарии дописываются внизу файла под заголовком `## Comments`.
+Строку `**Spec:**` дописывает `/to-tickets`. Спека без тикетов и тикеты без спеки — норма
+(`tech-debt/01` и `tech-debt/03` спеки не имеют).
 
 ## Статусы
 
-`ready-for-agent` ставит `/to-tickets`. `claimed` и `resolved` ставит `/wayfinder`. Остальные —
-пять триаж-ролей из [triage-labels.md](triage-labels.md).
+Статус выражается меткой: пять триаж-ролей из [triage-labels.md](triage-labels.md). Отдельного
+статуса «закрыт» нет — это `state: closed` самого issue.
+
+Дефолтной метки у скрипта нет. Её ставит тот, кто создаёт тикет: `/to-tickets` — `ready-for-agent`.
 
 ## Когда навык говорит «опубликовать в трекер»
 
-Создать файл в `etc/issues/<feature>/`, создав директорию при необходимости, и добавить строку
-в `etc/issues/INDEX.md`.
+`issue create` с телом в файле и меткой. Закрывать сразу — через `issue close`.
 
 ## Когда навык говорит «получить тикет»
 
-Прочитать файл по указанному пути. Пользователь обычно передаёт путь или номер напрямую.
-
-## Проверка дрейфа индекса
-
-```powershell
-Get-ChildItem etc/issues -Recurse -Filter *.md |
-  Select-String -Pattern '^\*\*Status:\*\*' | ForEach-Object { '{0} -> {1}' -f $_.Filename, $_.Line }
-```
+`issue view N --comments`. Пользователь обычно передаёт номер или URL.
 
 ## Wayfinding
 
-Используется `/wayfinder`. **Map** — один файл, **child** — файл на тикет.
+Используется `/wayfinder`. **Map** — issue с меткой `wayfinder:map`, **child** — issue с меткой
+своего типа, связанный с картой как sub-issue.
 
-- **Map**: `etc/issues/<effort>/map.md`, тело — Notes / Decisions-so-far / Fog.
-- **Child ticket**: `etc/issues/<effort>/issues/NN-<slug>.md`. Строка `Type:` хранит тип
-  (`research` / `prototype` / `grilling` / `task`), строка `Status:` — `claimed` / `resolved`.
-- **Blocking**: строка `Blocked by: NN, NN` вверху. Тикет разблокирован, когда все перечисленные
-  файлы `resolved`.
-- **Frontier**: открытые, незаблокированные и незанятые файлы в `etc/issues/<effort>/issues/`;
-  первый по номеру выигрывает.
-- **Claim**: поставить `Status: claimed` до начала работы.
-- **Resolve**: дописать ответ под `## Answer`, поставить `Status: resolved`, затем добавить
-  указатель на контекст в Decisions-so-far в `map.md`.
+- **Map**: тело — Notes / Decisions-so-far / Not yet specified / Out of scope.
+- **Child ticket**: метка типа (`wayfinder:research` / `prototype` / `grilling` / `task`).
+- **Blocking**: нативная зависимость, `block 17 --by 15`. Тикет разблокирован, когда все блокеры
+  закрыты.
+- **Frontier**: `frontier --map 19` — открытые дети карты, незаблокированные и незанятые.
+  Без `--map` брать `--label`.
+- **Claim**: `claim N` — назначить себя, до начала работы.
+- **Resolve**: `resolve N --body-file F` — ответ комментарием и закрытие, затем указатель на
+  контекст в Decisions-so-far карты.
+
+## Чего трекер не умеет
+
+REST не удаляет issue. Ошибочный тикет закрывается, а не стирается. Удаление репозитория требует
+scope `delete_repo`, которого у PAT нет.

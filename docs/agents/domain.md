@@ -28,7 +28,7 @@ Single-context:
 ```
 
 Тикеты и спеки в раскладку домена не входят: спека — `docs/features/<feature>/spec.md` ([specs.md](specs.md)),
-тикеты — `etc/issues/` ([issue-tracker.md](issue-tracker.md)).
+тикеты — issue в GitHub ([issue-tracker.md](issue-tracker.md)).
 
 ## Использовать словарь глоссария
 

@@ -298,18 +298,20 @@ audio и video по длине контента, скачивание заним
 
 ## Tickets
 
-- 00 — Архив референсов прототипа, снос, мультимодульный Gradle-скелет — `../../../etc/issues/core/00-archive-prototype-and-multimodule-skeleton.md`
-- 01 — Модуль ядра + тестовый стек (blocked by 00) — `../../../etc/issues/core/01-core-module-and-test-stack.md`
-- 02 — Фасад ядра, контракты, фейки (blocked by 01) — `../../../etc/issues/core/02-facade-contracts-and-fakes.md`
-- 03 — Роутинг URL и исходы разбора (blocked by 02) — `../../../etc/issues/core/03-url-routing-and-parse-outcomes.md`
-- 04 — Метаданные (blocked by 03) — `../../../etc/issues/core/04-metadata.md`
-- 05 — Конфигурация: хранение и переопределение (blocked by 02) — `../../../etc/issues/core/05-configuration.md`
-- 06 — Delegate-загрузка: staging и атомарная финализация (blocked by 02, 04) — `../../../etc/issues/core/06-delegate-staging-atomic-finalization.md`
-- 07 — Нормализация прогресса (blocked by 06) — `../../../etc/issues/core/07-progress-normalization.md`
-- 08 — Таксономия ошибок M1 (blocked by 06) — `../../../etc/issues/core/08-error-taxonomy.md`
-- 09 — Отмена загрузки (blocked by 06) — `../../../etc/issues/core/09-cancellation.md`
-- 10 — Общий Native-пайплайн (blocked by 06, 07) — `../../../etc/issues/core/10-native-pipeline.md`
-- 11 — Contract-тесты на golden-фикстурах (blocked by 04, 07) — `../../../etc/issues/core/11-contract-tests-golden-fixtures.md`
-- 12 — Очередь загрузок с лимитом параллелизма (blocked by 05, 06, 09) — `../../../etc/issues/core/12-download-queue-and-parallelism.md`
-- 13 — Чистое завершение (blocked by 09, 12) — `../../../etc/issues/core/13-clean-shutdown.md`
-- 14 — Терминология MediaItem / Track в ядре (blocked by none) — `../../../etc/issues/core/14-media-item-track-terminology.md`
+Тикеты живут в GitHub Issues: <https://github.com/averkhogliad/tube-loader/issues>. Числа ниже — номера issue.
+
+- 00 — Архив референсов прототипа, снос, мультимодульный Gradle-скелет — #1
+- 01 — Модуль ядра + тестовый стек (blocked by #1) — #2
+- 02 — Фасад ядра, контракты, фейки (blocked by #2) — #3
+- 03 — Роутинг URL и исходы разбора (blocked by #3) — #4
+- 04 — Метаданные (blocked by #4) — #5
+- 05 — Конфигурация: хранение и переопределение (blocked by #3) — #6
+- 06 — Delegate-загрузка: staging и атомарная финализация (blocked by #3, #5) — #7
+- 07 — Нормализация прогресса (blocked by #7) — #8
+- 08 — Таксономия ошибок M1 (blocked by #7) — #9
+- 09 — Отмена загрузки (blocked by #7) — #10
+- 10 — Общий Native-пайплайн (blocked by #7, #8) — #11
+- 11 — Contract-тесты на golden-фикстурах (blocked by #5, #8) — #12
+- 12 — Очередь загрузок с лимитом параллелизма (blocked by #6, #7, #10) — #13
+- 13 — Чистое завершение (blocked by #10, #13) — #14
+- 14 — Терминология MediaItem / Track в ядре — #15
