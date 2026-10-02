@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
 # Тонкий адаптер GitVerse-раннера: собирает runtime-данные события в аргументы/env и вызывает
-# провайдер-независимый сбор коммитов (scripts/ci) и домен Weeek (scripts/weeek).
+# провайдер-независимый CI-слой (сбор коммитов) и домен Weeek.
 # Доменной логики Weeek и вычисления диапазона коммитов здесь нет.
+# Провайдерские ключи (webBase, tokenEnv, branchPath, prPath) задаются в weeek.env рядом
+# со скриптом и уходят домену через аргументы и env.
 #
 #   tracker-notify.sh push   env: BEFORE AFTER BRANCH
 #   tracker-notify.sh pr     env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF
@@ -18,16 +20,11 @@ fail() { printf '%s\n' "$*" >&2; exit 1; }
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname -- "$(dirname -- "$script_dir")")"
 provider_conf="${script_dir}/weeek.env"
-global_conf="${root}/scripts/weeek/weeek.conf"
 
 [ -f "$provider_conf" ] || fail "не найден провайдерский конфиг ${provider_conf}"
-[ -f "$global_conf" ] || fail "не найден конфиг Weeek ${global_conf}"
 
-# Оба конфига попадают в env процесса weeek.sh: глобальные ключи домен читает сам из своего
-# файла, а провайдерские branchPath/prPath берёт из окружения после source.
+# Провайдерские ключи уходят в env процесса weeek.sh: branchPath/prPath домен берёт из окружения.
 set -a
-# shellcheck source=./weeek.conf
-source "$global_conf"
 # shellcheck source=./weeek.env
 source "$provider_conf"
 set +a
@@ -40,16 +37,8 @@ token_var="${tokenEnv:-WEEEK_API_TOKEN}"
 WEEEK_API_TOKEN="${!token_var}"
 export WEEEK_API_TOKEN
 
-zero=0000000000000000000000000000000000000000
-
 case "${1:-}" in
   push)
-    # нулевой after — событие удаления ветки: коммитов для уведомления нет,
-    # и commits.sh такой диапазон не разбирает
-    if [ "${AFTER:-}" = "$zero" ]; then
-      printf 'ветка удалена (after = нулевой sha) — публиковать нечего\n' >&2
-      exit 0
-    fi
     tsv="$(mktemp)"
     trap 'rm -f "$tsv"' EXIT
     commits_args=(--before "${BEFORE:-}" --after "${AFTER:-}")

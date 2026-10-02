@@ -22,7 +22,8 @@ Usage: commits.sh --before <sha> --after <sha> [--branch <name>] [--default-ref 
 по строке на пару (задача, коммит). Коммиты без id задачи не печатаются.
 
   --before        sha ref до пуша; 40 нулей, если ref новый
-  --after         sha ref после пуша; если пуст — tip ветки, затем HEAD
+  --after         sha ref после пуша; пуст или 40 нулей (удаление ветки) —
+                  коммитов в событии нет, публиковать нечего
   --branch        имя ветки, используется для определения --after
   --default-ref   опорный ref для новой ветки (по умолчанию refs/remotes/origin/main)
   --ids-from-text читает текст на stdin, печатает id задач по одному в строке
@@ -70,6 +71,13 @@ ticket_ids() { # stdin: текст
 
 if [ "$ids_from_text" = 1 ]; then
     ticket_ids
+    exit 0
+fi
+
+# Пустой after или нулевой sha — событие без коммитов (удаление ветки, пустой вход):
+# git не вызывается вовсе, job остаётся зелёным.
+if [ -z "$after" ] || [ "$after" = "$ZERO" ]; then
+    log 'в событии нет коммитов — публиковать нечего'
     exit 0
 fi
 
