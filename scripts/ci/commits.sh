@@ -135,6 +135,11 @@ range=(-1)
 if [ -n "${before:-}" ] && [ "$before" != "$ZERO" ] && [ -n "$after" ] &&
    git rev-parse --verify --quiet "${before}^{commit}" > /dev/null; then
     range=("$before..$after")
+elif [ -n "$after" ] && [ -n "$main_ref" ] && [ "$after" = "$main_ref" ]; then
+    # first push to the default branch: after equals the remote ref, so "--not" yields nothing
+    # and -1 would see a single commit. The whole history is the only correct range here.
+    range=("$after")
+    log 'first push to the default branch — the whole history is in range'
 elif [ -n "$after" ] && [ -n "$main_ref" ] && [ "$after" != "$main_ref" ]; then
     # before is zero (new branch) or unreachable (amend): count from the reference ref,
     # otherwise -1 yields a single commit and the branch history is lost

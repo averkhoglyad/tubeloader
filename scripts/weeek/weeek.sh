@@ -66,6 +66,10 @@ require_provider_key() { # key
   esac
 }
 
+# has_more: the marker search stops after this many comment pages. Without a cap a looping
+# hasMore — or a ticket with tens of thousands of comments — spins until the job timeout.
+commentsMaxPages="${commentsMaxPages:-20}"
+
 body_file="$(mktemp)"
 trap 'rm -f "$body_file"' EXIT
 
@@ -104,7 +108,7 @@ task_state() { # id -> state; 1 — the state request failed
 }
 
 has_marker() { # task_id marker -> 0 found, 1 not found, 2 request error
-  local task_id="$1" marker="$2" offset=0 code
+  local task_id="$1" marker="$2" offset=0 code page=0
   while :; do
     code="$(request GET "/tm/tasks/$task_id/comments?limit=$commentsPage&offset=$offset")" || return 2
     if [ "$code" != 200 ]; then
@@ -114,6 +118,13 @@ has_marker() { # task_id marker -> 0 found, 1 not found, 2 request error
     # slashes in the response body are escaped as \/ — otherwise a marker with a slash is not found
     if sed 's|\\/|/|g' "$body_file" | grep -qF -- "$marker"; then return 0; fi
     grep -q '"hasMore": *true' "$body_file" || return 1
+    page=$((page + 1))
+    if [ "$page" -ge "$commentsMaxPages" ]; then
+      # the marker was not found within the cap: treat it as an error, not as "absent",
+      # otherwise a duplicate comment is published on the next run
+      log "!! GET comments ${task_id}: ${page} pages scanned, marker not found"
+      return 2
+    fi
     offset=$((offset + commentsPage))
   done
 }
@@ -128,7 +139,7 @@ post_comment() { # task_id markdown
   payload="$(printf '{"markdown":"%s"}' "$(printf '%s' "$markdown" | json_string)")"
   code="$(request POST "/tm/tasks/$task_id/comments" "$payload")" || return 1
   if [ "$code" != 200 ]; then
-    log "!! POST comment ${task_id} -> ${code} $(head -c 300 "$body_file")"
+    log "!! POST comment ${task_id} -> ${code}"
     return 1
   fi
   log "   comment added to ticket ${task_id}"
@@ -260,24 +271,18 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
   mapfile -t task_ids < <(printf '%s\n' "${!by_task[@]}" | sort -n)
 
   for id in "${task_ids[@]}"; do
-    rc=0
-    state="$(task_state "$id")" || rc=$?
-    if [ "$rc" != 0 ]; then
-      log "-- ticket ${id}: state not obtained, skipped"
-      continue
-    fi
+    state="$(task_state "$id")" || fail "ticket ${id}: state not obtained: a broken integration, not a per-ticket hiccup"
     case "$state" in
       ok) ;;
       deleted) log "?? ticket ${id} is deleted, the comment is written anyway" ;;
       missing) log "-- ticket ${id} not found, skipped"; continue ;;
-      *) log "!! ticket ${id} -> ${state}"; continue ;;
+      *) fail "ticket ${id} -> ${state}: a broken integration, not a per-ticket hiccup" ;;
     esac
 
     rc=0
     markdown="$(render_commits "$id" "$web_base" <<<"${by_task[$id]%$'\n'}")" || rc=$?
     if [ "$rc" = 2 ]; then
-      log "   ticket ${id}: marker check failed — skipped"
-      continue
+      fail "ticket ${id}: marker check failed: a broken integration, not a per-ticket hiccup"
     fi
     if [ "$rc" != 0 ]; then
       log "   ticket ${id} has no new commits"
@@ -290,8 +295,7 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
       text+=" to branch [${branch}](${web_base}$(host_path "$branchPath" "$branch"))"
     fi
     text+=$'\n\n'"${markdown%$'\n'}"
-    # one ticket failing does not break the batch: the remaining tickets must get the notification
-    post_comment "$id" "$text" || log "!! ticket ${id} not sent"
+    post_comment "$id" "$text" || fail "ticket ${id}: comment not posted: a broken integration, not a per-ticket hiccup"
   done
 }
 
@@ -321,17 +325,12 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
   text="$(render_merge "$web_base" "$marker")"
 
   for id in $ids; do
-    rc=0
-    state="$(task_state "$id")" || rc=$?
-    if [ "$rc" != 0 ]; then
-      log "-- ticket ${id}: state not obtained, skipped"
-      continue
-    fi
+    state="$(task_state "$id")" || fail "ticket ${id}: state not obtained: a broken integration, not a per-ticket hiccup"
     case "$state" in
       ok) ;;
       deleted) log "?? ticket ${id} is deleted, the comment is written anyway" ;;
       missing) log "-- ticket ${id} not found, skipped"; continue ;;
-      *) log "!! ticket ${id} -> ${state}"; continue ;;
+      *) fail "ticket ${id} -> ${state}: a broken integration, not a per-ticket hiccup" ;;
     esac
     rc=0
     has_marker "$id" "$marker" || rc=$?
@@ -341,10 +340,9 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
     fi
     # 2 — the dedup request failed: publishing is not allowed, otherwise every failure produces a duplicate
     if [ "$rc" = 2 ]; then
-      log "!! ticket ${id}: marker check failed — skipped"
-      continue
+      fail "ticket ${id}: marker check failed: a broken integration, not a per-ticket hiccup"
     fi
-    post_comment "$id" "$text" || log "!! ticket ${id} not sent"
+    post_comment "$id" "$text" || fail "ticket ${id}: comment not posted: a broken integration, not a per-ticket hiccup"
   done
 }
 
