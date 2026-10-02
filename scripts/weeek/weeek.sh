@@ -27,14 +27,14 @@ usage: weeek.sh <команда> [аргументы]
   task-status   <id>                                состояние: ok|deleted|missing|error:<код>
   comment-has   <id> <marker>                       код 0 — маркер есть, 1 — нет, 2 — ошибка
   comment-post  <id> --body-file <path>             добавить комментарий
-  notify-push   --web-base <url> [--branch <name>]  коммиты пуша: TSV id<TAB>sha<TAB>subject<TAB>author на stdin
+  notify-push   --web-base <url> [--branch <name>]  коммиты пуша: TSV id<TAB>sha<TAB>subject<TAB>author<TAB>commit-url на stdin
   notify-pr     --web-base <url> --ticket-ids <ids>  слияние PR: id задач берутся из аргумента,
                                                     PR_NUMBER, PR_TITLE, PR_AUTHOR, PR_HEAD_REF,
                                                     PR_BASE_REF в env; маркер дедупа — pr:<номер PR>
 
 Конфиг: env WEEEK_CONF, иначе weeek.conf рядом со скриптом.
 Провайдерские шаблоны ссылок branchPath и prPath задают только адаптеры
-(WEЕEK_CONF указывает на провайдерский файл).
+(WEEEK_CONF указывает на провайдерский файл).
 Переменные: TRACKER_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
 EOF
 }
@@ -220,17 +220,22 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
   parse_args "$@"
   web_base="$arg_web_base"
   branch="$arg_branch"
+  # команда диапазона не читает id из аргумента: молча принятый флаг дал бы впечатление,
+  # что фильтр применён
+  [ -z "$arg_task_ids" ] || fail 'notify-push не принимает --ticket-ids'
   # шаблон пути ветки проверяется до первого запроса к API
   [ -z "$branch" ] || require_provider_key branchPath
 
   local -A by_task=()   # id -> строки "sha<TAB>subject<TAB>author"
   local -A seen=()      # id/sha -> 1, дедуп внутри пуша
   local total=0
-  while IFS=$'\t' read -r id sha subject author; do
+  while IFS=$'\t' read -r id sha subject author commit_url; do
     [ -n "${id:-}" ] || continue
     total=$((total + 1))
     [ "${seen["$id/$sha"]:-}" = 1 ] && continue
     seen["$id/$sha"]=1
+    # commit_url строится в CI-слое; пока не реализован — колонка пустая
+    : "$commit_url"
     # перевод строки — вне подстановки: $(...) срезает завершающий \n и записи батча слипаются
     by_task[$id]+="$(printf '%s\t%s\t%s' "$sha" "${subject:-}" "${author:-}")"$'\n'
   done
@@ -286,6 +291,9 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
   web_base="$arg_web_base"
   number="${PR_NUMBER:-}"
   title="${PR_TITLE:-}"
+  # команда слияния знает ref-ы из env: молча принятый --branch дал бы впечатление,
+  # что переданное значение использовано
+  [ -z "$arg_branch" ] || fail 'notify-pr не принимает --branch'
 
   [ -n "$number" ] || fail 'PR_NUMBER не задан'
   # маркер — номер PR: sha мержа встречается в URL push-комментария и подавлял merge-комментарий

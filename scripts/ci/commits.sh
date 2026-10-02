@@ -1,5 +1,7 @@
 #!/usr/bin/env bash
-# Провайдер-независимый сбор коммитов пуша: TSV id<TAB>sha<TAB>subject<TAB>author в stdout.
+# Провайдер-независимый сбор коммитов пуша: TSV id<TAB>sha<TAB>subject<TAB>author<TAB>commit-url
+# в stdout. Пятая колонка зарезервирована под готовую ссылку на коммит, которую строит CI-слой;
+# пока резолв не реализован, колонка печатается пустой.
 # Номер задачи в сообщении коммита распознаётся здесь: ticketPattern живёт в конфиге CI-слоя
 # (ci.conf рядом со скриптом, путь переопределяется env CI_CONF). Домен Weeek получает id готовыми.
 
@@ -18,7 +20,7 @@ usage() {
 Usage: commits.sh --before <sha> --after <sha> [--branch <name>] [--default-ref <ref>]
        commits.sh --ids-from-text
 
-Собирает коммиты пуша и печатает их как TSV: id<TAB>sha<TAB>subject<TAB>author,
+Собирает коммиты пуша и печатает их как TSV: id<TAB>sha<TAB>subject<TAB>author<TAB>commit-url,
 по строке на пару (задача, коммит). Коммиты без id задачи не печатаются.
 
   --before        sha ref до пуша; 40 нулей, если ref новый
@@ -26,7 +28,8 @@ Usage: commits.sh --before <sha> --after <sha> [--branch <name>] [--default-ref 
                   при удалении ветки — коммитов в событии нет, публиковать нечего
   --branch        имя ветки, используется для определения --after
   --default-ref   опорный ref для новой ветки (по умолчанию refs/remotes/origin/main)
-  --ids-from-text читает текст на stdin, печатает id задач по одному в строке
+  --ids-from-text читает текст на stdin, печатает id задач по одному в строке;
+                  несовместим с --before/--after/--branch/--default-ref
 
 Конфиг: env CI_CONF, иначе ci.conf рядом со скриптом (ключ ticketPattern).
 Код возврата: 0 при успехе, 2 при ошибке аргументов.
@@ -37,6 +40,7 @@ before=''
 after=''
 branch=''
 default_ref='refs/remotes/origin/main'
+default_ref_given=0
 ids_from_text=0
 
 take_value() {
@@ -52,7 +56,7 @@ while [ "$#" -gt 0 ]; do
         --before)      take_value "$@"; before="$2"; shift 2 ;;
         --after)       take_value "$@"; after="$2"; shift 2 ;;
         --branch)      take_value "$@"; branch="$2"; shift 2 ;;
-        --default-ref) take_value "$@"; default_ref="$2"; shift 2 ;;
+        --default-ref) take_value "$@"; default_ref="$2"; default_ref_given=1; shift 2 ;;
         --ids-from-text) ids_from_text=1; shift ;;
         -h|--help)     usage; exit 0 ;;
         *)             echo "commits.sh: unknown argument: $1" >&2; usage; exit 2 ;;
@@ -63,13 +67,24 @@ done
 # shellcheck source=./ci.conf
 source "$conf_file"
 [ -n "${ticketPattern:-}" ] || fail "не задан ключ ticketPattern в ${conf_file}"
+# grep отдаёт код 2 на некомпилируемом шаблоне, 1 — на «нет совпадений». Без этой проверки
+# битый ticketPattern молча выключает уведомления: grep глотается через || true, задач 0, код 0.
+pattern_rc=0
+{ grep -qE "$ticketPattern" /dev/null; } || pattern_rc=$?
+[ "$pattern_rc" -le 1 ] || fail "некомпилируемый ticketPattern в ${conf_file}: ${ticketPattern}"
 
 # id задачи по строке; пустой вход даёт пустой вывод, не ошибку
 ticket_ids() { # stdin: текст
     { grep -oE "$ticketPattern" || true; } | tr -d '[]' | sort -un
 }
 
+# Режим текста не смотрит на диапазон: молча принятый --before/--after/--branch дал бы
+# впечатление, что фильтр по диапазону применён.
 if [ "$ids_from_text" = 1 ]; then
+    if [ -n "$before" ] || [ -n "$after" ] || [ -n "$branch" ] || [ "$default_ref_given" = 1 ]; then
+        echo 'commits.sh: --ids-from-text несовместим с --before/--after/--branch/--default-ref' >&2
+        exit 2
+    fi
     ticket_ids
     exit 0
 fi
@@ -116,7 +131,7 @@ while IFS=$'\t' read -r sha subject author; do
     fi
     for id in $ids; do
         tasks[$id]=1
-        printf '%s\t%s\t%s\t%s\n' "$id" "$sha" "${subject:-}" "${author:-}"
+        printf '%s\t%s\t%s\t%s\t%s\n' "$id" "$sha" "${subject:-}" "${author:-}" ''
     done
 done <<<"$commits"
 log "коммитов: ${total}, из них без id задачи: ${skipped}; задач: ${#tasks[@]}"
