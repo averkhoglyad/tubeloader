@@ -11,30 +11,10 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Собрать коммиты пуша
-        env:
-          BEFORE: ${{ gitverse.event.before }}
-          AFTER: ${{ gitverse.event.after }}
-          HEAD_SHA: ${{ gitverse.sha }}
-        run: |
-          zero=0000000000000000000000000000000000000000
-          after="${AFTER:-$HEAD_SHA}"
-          main_ref=$(git rev-parse --verify --quiet refs/remotes/origin/main || true)
-          range=(-1)
-          if [ -n "${BEFORE:-}" ] && [ "$BEFORE" != "$zero" ] && [ -n "$after" ] &&
-             git rev-parse --verify --quiet "${BEFORE}^{commit}" > /dev/null; then
-            range=("$BEFORE..$after")
-          elif [ -n "$after" ] && [ -n "$main_ref" ] && [ "$after" != "$main_ref" ]; then
-            # before нулевой или недостижимый (переписанная история) — точка отсчёта main
-            range=("$after" --not refs/remotes/origin/main)
-          fi
-          echo "range=${range[*]}"
-          git log --format='%H%x09%s%x09%an' "${range[@]}" > /tmp/commits.tsv
-          wc -l < /tmp/commits.tsv
-
       - name: Отправить комментарии в Weeek
         env:
           WEEEK_API_TOKEN: ${{ secrets.WEEEK_API_TOKEN }}
-          GITVERSE_REPOSITORY: ${{ gitverse.repository }}
+          BEFORE: ${{ gitverse.event.before }}
+          AFTER: ${{ gitverse.event.after }}
           BRANCH: ${{ gitverse.head_ref || gitverse.ref_name }}
-        run: bash .gitverse/scripts/tracker/notify.sh push < /tmp/commits.tsv
+        run: bash .gitverse/scripts/tracker-notify.sh push
