@@ -22,8 +22,8 @@ Usage: commits.sh --before <sha> --after <sha> [--branch <name>] [--default-ref 
 по строке на пару (задача, коммит). Коммиты без id задачи не печатаются.
 
   --before        sha ref до пуша; 40 нулей, если ref новый
-  --after         sha ref после пуша; пуст или 40 нулей (удаление ветки) —
-                  коммитов в событии нет, публиковать нечего
+  --after         sha ref после пуша; если пуст — tip ветки, затем HEAD; 40 нулей
+                  при удалении ветки — коммитов в событии нет, публиковать нечего
   --branch        имя ветки, используется для определения --after
   --default-ref   опорный ref для новой ветки (по умолчанию refs/remotes/origin/main)
   --ids-from-text читает текст на stdin, печатает id задач по одному в строке
@@ -74,18 +74,17 @@ if [ "$ids_from_text" = 1 ]; then
     exit 0
 fi
 
-# Пустой after или нулевой sha — событие без коммитов (удаление ветки, пустой вход):
-# git не вызывается вовсе, job остаётся зелёным.
-if [ -z "$after" ] || [ "$after" = "$ZERO" ]; then
-    log 'в событии нет коммитов — публиковать нечего'
-    exit 0
-fi
-
 if [ -z "$after" ] && [ -n "$branch" ]; then
     after=$(git rev-parse --verify --quiet "refs/remotes/origin/${branch}^{commit}" || true)
 fi
 if [ -z "$after" ]; then
     after=$(git rev-parse --verify --quiet 'HEAD^{commit}' || true)
+fi
+
+# Нулевой sha — штатное удаление ветки, а не сбой: коммитов нет, job остаётся зелёным.
+if [ "$after" = "$ZERO" ]; then
+    log 'в событии нет коммитов — публиковать нечего'
+    exit 0
 fi
 
 main_ref=$(git rev-parse --verify --quiet "$default_ref" || true)
