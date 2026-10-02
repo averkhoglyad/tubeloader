@@ -1,0 +1,27 @@
+name: 'Tracker: коммиты в Weeek'
+
+on:
+  push:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: tracker-push-${{ github.ref }}
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0
+
+      - name: Отправить комментарии в Weeek
+        env:
+          WEEEK_API_TOKEN: ${{ secrets.WEEEK_API_TOKEN }}
+          BEFORE: ${{ github.event.before }}
+          AFTER: ${{ github.event.after }}
+          BRANCH: ${{ github.head_ref || github.ref_name }}
+        run: bash .github/scripts/tracker-notify.sh push
