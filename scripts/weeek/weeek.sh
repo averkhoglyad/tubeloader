@@ -4,7 +4,8 @@
 #
 # Провайдера CI домен не знает: веб-хост ссылок приходит аргументом --web-base,
 # runtime-данные — stdin и env, глобальные настройки — из weeek.conf рядом
-# со скриптом (путь переопределяется env WEEEK_CONF).
+# со скриптом (путь переопределяется env WEEEK_CONF), провайдерские шаблоны путей
+# ссылок branchPath/prPath — из конфига вызывающего адаптера, у домена дефолта нет.
 #
 # Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1, WEEEK_CONF.
 
@@ -31,6 +32,8 @@ usage: weeek.sh <команда> [аргументы]
                                                     PR_HEAD_REF, PR_BASE_REF, PR_MERGE_SHA в env
 
 Конфиг: env WEEEK_CONF, иначе weeek.conf рядом со скриптом.
+Провайдерские шаблоны ссылок branchPath и prPath задают только адаптеры
+(WEЕEK_CONF указывает на провайдерский файл).
 Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
 EOF
 }
@@ -45,9 +48,14 @@ esac
 [ -f "$conf_file" ] || fail "не найден конфиг ${conf_file} (путь задаётся WEEEK_CONF)"
 # shellcheck source=./weeek.conf
 source "$conf_file"
-for key in apiBase ticketPattern commentsPage apiMaxTime branchPath prPath; do
+for key in apiBase ticketPattern commentsPage apiMaxTime; do
   [ -n "${!key:-}" ] || fail "не задан ключ ${key} в ${conf_file}"
 done
+
+# branchPath и prPath — провайдерские: домен их не подставляет и дефолта не имеет.
+require_provider_key() { # key
+  [ -n "${!1:-}" ] || fail "не задан ${1}: шаблон пути ссылки задаёт провайдерский конфиг (${conf_file}) или env"
+}
 
 body_file="$(mktemp)"
 trap 'rm -f "$body_file"' EXIT
@@ -226,7 +234,8 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV sha<TAB>subject<TA
 
     text="**Коммиты**"
     if [ -n "$branch" ]; then
-      # путь ветки у хостов разный: __VALUE__ в branchPath из конфига
+      # путь ветки у хостов разный: шаблон __VALUE__ приходит в branchPath от адаптера
+      require_provider_key branchPath
       text+=" в ветку [${branch}](${web_base}$(host_path "$branchPath" "$branch"))"
     fi
     text+=$'\n\n'"${markdown%$'\n'}"
@@ -250,6 +259,8 @@ notify_pr() { # --web-base URL ; env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF P
     return 0
   fi
 
+  require_provider_key branchPath
+  require_provider_key prPath
   text="$(render_merge "$web_base")"
 
   for id in $ids; do
