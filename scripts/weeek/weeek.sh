@@ -30,7 +30,7 @@ usage: weeek.sh <команда> [аргументы]
   notify-push   --web-base <url> [--branch <name>]  коммиты пуша: TSV id<TAB>sha<TAB>subject<TAB>author на stdin
   notify-pr     --web-base <url> --ticket-ids <ids>  слияние PR: id задач берутся из аргумента,
                                                     PR_NUMBER, PR_TITLE, PR_AUTHOR, PR_HEAD_REF,
-                                                    PR_BASE_REF, PR_MERGE_SHA в env
+                                                    PR_BASE_REF в env; маркер дедупа — pr:<номер PR>
 
 Конфиг: env WEEEK_CONF, иначе weeek.conf рядом со скриптом.
 Провайдерские шаблоны ссылок branchPath и prPath задают только адаптеры
@@ -71,7 +71,9 @@ request() { # method path [json-body] -> HTTP-код, тело в $body_file
 }
 
 json_string() { # stdin -> содержимое JSON-строки без кавычек
-  sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g'
+  # -z: весь вход экранируется одним потоком; построчные правила с меткой ':a' после s///
+  # пропускали строки, добавленные N, и кавычка в них давала невалидный JSON
+  sed -z -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' -e 's/\n/\\n/g'
 }
 
 check_task() { # id -> ok|deleted|missing|error:<код>
@@ -150,15 +152,21 @@ parse_args() { # --web-base URL [--branch NAME] [--ticket-ids IDS]
 
 # Markdown блока «Коммиты» для одной задачи. stdout — только markdown,
 # диагностика уходит в stderr; код 1 — новых коммитов нет.
-render_commits() { # task_id web_base ; stdin: строки "sha<TAB>subject<TAB>author"
+render_commits() { # task_id web_base ; stdin: строки "sha<TAB>subject<TAB>author" ; 1 — новых нет, 2 — ошибка запроса
   local task_id="$1" web_base="$2"
-  local sha subject author sha_short line markdown=''
+  local sha subject author sha_short line markdown='' rc
   while IFS=$'\t' read -r sha subject author; do
     [ -n "${sha:-}" ] || continue
     # маркер дедупа — полный sha: он попадает в текст ссылки, других полных sha в комментарии нет
-    if has_marker "$task_id" "$sha"; then
+    rc=0
+    has_marker "$task_id" "$sha" || rc=$?
+    if [ "$rc" = 0 ]; then
       log "   ${sha:0:7} уже отмечен в задаче ${task_id} — пропуск"
       continue
+    fi
+    # 2 — запрос дедупа не удался: публиковать нельзя, иначе на каждый сбой будет дубль
+    if [ "$rc" = 2 ]; then
+      return 2
     fi
     sha_short="${sha:0:7}"
     # бэктики внутрь ссылки нельзя: Weeek выносит их наружу и ссылка ломается
@@ -177,8 +185,8 @@ host_path() { # template value
 
 # Markdown блока «Слияние PR». Ссылка на профиль автора не строится:
 # её форма зависит от хоста, а имя автора — общее для всех хостов.
-render_merge() { # web_base -> markdown в stdout
-  local web_base="$1" number="${PR_NUMBER:-}" title="${PR_TITLE:-}"
+render_merge() { # web_base marker -> markdown в stdout
+  local web_base="$1" marker="$2" number="${PR_NUMBER:-}" title="${PR_TITLE:-}"
   local head_ref="${PR_HEAD_REF:-}" base_ref="${PR_BASE_REF:-main}" origin='' text
   local branch_url
   branch_url="$(host_path "$branchPath" '')"
@@ -189,11 +197,13 @@ render_merge() { # web_base -> markdown в stdout
   origin+="[${base_ref}](${web_base}${branch_url}${base_ref})"
   text+=$'\n'"${origin}"
   [ -n "${PR_AUTHOR:-}" ] && text+=" · автор ${PR_AUTHOR}"
+  # маркер дедупа обязан быть в теле: комментарии append-only, has_marker ищет только по телу
+  text+=$'\n'"${marker}"
   printf '%s\n' "$text"
 }
 
 notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>subject<TAB>author
-  local web_base branch id sha subject author state markdown text
+  local web_base branch id sha subject author state markdown text rc
   parse_args "$@"
   web_base="$arg_web_base"
   branch="$arg_branch"
@@ -228,10 +238,16 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
       *) log "!! задача ${id} -> ${state}"; continue ;;
     esac
 
-    markdown="$(render_commits "$id" "$web_base" <<<"${by_task[$id]%$'\n'}")" || {
+    rc=0
+    markdown="$(render_commits "$id" "$web_base" <<<"${by_task[$id]%$'\n'}")" || rc=$?
+    if [ "$rc" = 2 ]; then
+      log "   задача ${id}: проверка маркеров не удалась — пропуск"
+      continue
+    fi
+    if [ "$rc" != 0 ]; then
       log "   в задаче ${id} новых коммитов нет"
       continue
-    }
+    fi
 
     text="**Коммиты**"
     if [ -n "$branch" ]; then
@@ -240,19 +256,21 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
       text+=" в ветку [${branch}](${web_base}$(host_path "$branchPath" "$branch"))"
     fi
     text+=$'\n\n'"${markdown%$'\n'}"
-    post_comment "$id" "$text"
+    # сбой одной задачи не обрывает батч: остальные задачи должны получить уведомление
+    post_comment "$id" "$text" || log "!! задача ${id} не отправлена"
   done
 }
 
-notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF PR_MERGE_SHA
-  local web_base number title marker ids id state text
+notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF
+  local web_base number title marker ids id state text rc
   parse_args "$@"
   web_base="$arg_web_base"
   number="${PR_NUMBER:-}"
   title="${PR_TITLE:-}"
 
   [ -n "$number" ] || fail 'PR_NUMBER не задан'
-  marker="${PR_MERGE_SHA:-#${number}}"
+  # маркер — номер PR: sha мержа встречается в URL push-комментария и подавлял merge-комментарий
+  marker="pr:${number}"
 
   # id задач резолвит CI-слой и передаёт аргументом; PR_TITLE — только текст сообщения
   ids="$arg_task_ids"
@@ -263,7 +281,7 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
 
   require_provider_key branchPath
   require_provider_key prPath
-  text="$(render_merge "$web_base")"
+  text="$(render_merge "$web_base" "$marker")"
 
   for id in $ids; do
     state="$(check_task "$id")"
@@ -273,11 +291,18 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
       missing) log "-- задача ${id} не найдена, пропуск"; continue ;;
       *) log "!! задача ${id} -> ${state}"; continue ;;
     esac
-    if has_marker "$id" "$marker"; then
+    rc=0
+    has_marker "$id" "$marker" || rc=$?
+    if [ "$rc" = 0 ]; then
       log "   PR #${number} уже отмечен в задаче ${id} — пропуск"
       continue
     fi
-    post_comment "$id" "$text"
+    # 2 — запрос дедупа не удался: публиковать нельзя, иначе на каждый сбой будет дубль
+    if [ "$rc" = 2 ]; then
+      log "!! задача ${id}: проверка маркеров не удалась — пропуск"
+      continue
+    fi
+    post_comment "$id" "$text" || log "!! задача ${id} не отправлена"
   done
 }
 

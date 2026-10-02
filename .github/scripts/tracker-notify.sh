@@ -35,6 +35,10 @@ set +a
 [ -n "${webBase:-}" ] || fail 'не задан webBase в weeek.env'
 token_var="${tokenEnv:-WEEEK_API_TOKEN}"
 [ -n "${!token_var:-}" ] || fail "не задан токен ${token_var} (секрет репозитория)"
+# домен читает только WEEEK_API_TOKEN: имя секрета задаёт провайдер, поэтому переименованную
+# переменную приводим к тому имени, которое домен знает
+WEEEK_API_TOKEN="${!token_var}"
+export WEEEK_API_TOKEN
 
 zero=0000000000000000000000000000000000000000
 
