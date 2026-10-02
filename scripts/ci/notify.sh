@@ -20,6 +20,7 @@ fail() { printf '%s\n' "$*" >&2; exit 1; }
 log() { printf '%s\n' "$*" >&2; }
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
+conf_file="${CI_CONF:-${script_dir}/ci.conf}"
 
 usage() {
     cat >&2 <<'USAGE'
@@ -38,19 +39,23 @@ case "${1:-}" in
   *) usage >&2; exit 2 ;;
 esac
 
+[ -f "$conf_file" ] || fail "нет файла настроек ${conf_file} (путь задаётся CI_CONF)"
+# shellcheck source=./ci.conf
+source "$conf_file"
+[ -n "${dispatcher:-}" ] || fail "не задан dispatcher в ${conf_file} (путь к скрипту домена)"
+
 conf_file="${TRACKER_CONF:-}"
 [ -n "$conf_file" ] || fail 'TRACKER_CONF не задан: адаптер должен передать путь к провайдерскому конфигу'
 [ -f "$conf_file" ] || fail "нет файла провайдерского конфига ${conf_file}"
 
-# Провайдерские ключи уходят в env процесса домена: webBase/branchPath/prPath/tokenEnv/dispatcher.
+# Провайдерские ключи уходят в env процесса домена: webBase/branchPath/prPath/tokenEnv.
 set -a
 # shellcheck source=tracker.conf-from-env
 source "$conf_file"
 set +a
 
-[ -n "${webBase:-}" ]    || fail "не задан webBase в ${conf_file}"
-[ -n "${tokenEnv:-}" ]   || fail "не задан tokenEnv в ${conf_file}"
-[ -n "${dispatcher:-}" ] || fail "не задан dispatcher в ${conf_file} (путь к скрипту домена)"
+[ -n "${webBase:-}" ]  || fail "не задан webBase в ${conf_file}"
+[ -n "${tokenEnv:-}" ] || fail "не задан tokenEnv в ${conf_file}"
 
 # Резолв токена: имя секрета задаёт провайдер (tokenEnv), значение приходит из секрета
 # репозитория. Домен читает только TRACKER_API_TOKEN — канонический канал, не зависящий
