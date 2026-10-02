@@ -7,12 +7,12 @@
 # со скриптом (путь переопределяется env WEEEK_CONF), провайдерские шаблоны путей
 # ссылок branchPath/prPath — из конфига вызывающего адаптера, у домена дефолта нет.
 #
-# Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1, WEEEK_CONF.
+# Переменные: TRACKER_API_TOKEN (обязательна), DRY_RUN=1, WEEEK_CONF.
 
 set -euo pipefail
 
 DRY_RUN="${DRY_RUN:-0}"
-TOKEN="${WEEEK_API_TOKEN:-}"
+TOKEN="${TRACKER_API_TOKEN:-}"
 script_dir="$(dirname -- "${BASH_SOURCE[0]}")"
 conf_file="${WEEEK_CONF:-${script_dir}/weeek.conf}"
 
@@ -35,7 +35,7 @@ usage: weeek.sh <команда> [аргументы]
 Конфиг: env WEEEK_CONF, иначе weeek.conf рядом со скриптом.
 Провайдерские шаблоны ссылок branchPath и prPath задают только адаптеры
 (WEЕEK_CONF указывает на провайдерский файл).
-Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
+Переменные: TRACKER_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
 EOF
 }
 usage_error() { usage >&2; exit 2; }
@@ -45,7 +45,7 @@ case "${1:-}" in
   -h | --help | help) usage; exit 0 ;;
 esac
 
-[ -n "$TOKEN" ] || fail 'WEEEK_API_TOKEN не задан'
+[ -n "$TOKEN" ] || fail 'TRACKER_API_TOKEN не задан'
 [ -f "$conf_file" ] || fail "не найден конфиг ${conf_file} (путь задаётся WEEEK_CONF)"
 # shellcheck source=./weeek.conf
 source "$conf_file"

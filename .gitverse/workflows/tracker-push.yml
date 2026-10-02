@@ -6,6 +6,9 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tracker-push-${{ gitverse.ref }}
+
 jobs:
   notify:
     runs-on: ubuntu-latest

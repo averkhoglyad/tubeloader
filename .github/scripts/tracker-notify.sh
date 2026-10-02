@@ -2,7 +2,7 @@
 # Тонкий адаптер GitHub-раннера: собирает runtime-данные события в аргументы/env и вызывает
 # провайдер-независимый CI-слой (сбор коммитов) и домен Weeek.
 # Доменной логики Weeek и вычисления диапазона коммитов здесь нет.
-# Провайдерские ключи (webBase, tokenEnv, branchPath, prPath) задаются в weeek.env рядом
+# Провайдерские ключи (webBase, tokenEnv, branchPath, prPath) задаются в tracker.env рядом
 # со скриптом и уходят домену через аргументы и env.
 #
 #   tracker-notify.sh push   env: BEFORE AFTER BRANCH
@@ -11,7 +11,7 @@
 # id задач в сообщениях коммитов и в заголовке PR резолвит CI-слой (scripts/ci);
 # адаптер только передаёт готовые id домену Weeek.
 #
-# Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
+# Переменные: TRACKER_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
 
 set -euo pipefail
 
@@ -19,23 +19,23 @@ fail() { printf '%s\n' "$*" >&2; exit 1; }
 
 script_dir="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 root="$(dirname -- "$(dirname -- "$script_dir")")"
-provider_conf="${script_dir}/weeek.env"
+provider_conf="${script_dir}/tracker.env"
 
 [ -f "$provider_conf" ] || fail "не найден провайдерский конфиг ${provider_conf}"
 
 # Провайдерские ключи уходят в env процесса weeek.sh: branchPath/prPath домен берёт из окружения.
 set -a
-# shellcheck source=./weeek.env
+# shellcheck source=./tracker.env
 source "$provider_conf"
 set +a
 
-[ -n "${webBase:-}" ] || fail 'не задан webBase в weeek.env'
+[ -n "${webBase:-}" ] || fail 'не задан webBase в tracker.env'
 token_var="${tokenEnv:-WEEEK_API_TOKEN}"
 [ -n "${!token_var:-}" ] || fail "не задан токен ${token_var} (секрет репозитория)"
-# домен читает только WEEEK_API_TOKEN: имя секрета задаёт провайдер, поэтому переименованную
+# домен читает только TRACKER_API_TOKEN: имя секрета задаёт провайдер, поэтому переименованную
 # переменную приводим к тому имени, которое домен знает
-WEEEK_API_TOKEN="${!token_var}"
-export WEEEK_API_TOKEN
+TRACKER_API_TOKEN="${!token_var}"
+export TRACKER_API_TOKEN
 
 case "${1:-}" in
   push)

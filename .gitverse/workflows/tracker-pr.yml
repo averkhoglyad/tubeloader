@@ -7,6 +7,9 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: tracker-pr-${{ gitverse.event.pull_request.number }}
+
 jobs:
   notify:
     if: gitverse.event.pull_request.merged == true
