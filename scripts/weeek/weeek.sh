@@ -27,9 +27,10 @@ usage: weeek.sh <команда> [аргументы]
   task-status   <id>                                состояние: ok|deleted|missing|error:<код>
   comment-has   <id> <marker>                       код 0 — маркер есть, 1 — нет, 2 — ошибка
   comment-post  <id> --body-file <path>             добавить комментарий
-  notify-push   --web-base <url> [--branch <name>]  коммиты пуша: TSV sha<TAB>subject<TAB>author на stdin
-  notify-pr     --web-base <url>                    слияние PR: PR_NUMBER, PR_TITLE, PR_AUTHOR,
-                                                    PR_HEAD_REF, PR_BASE_REF, PR_MERGE_SHA в env
+  notify-push   --web-base <url> [--branch <name>]  коммиты пуша: TSV id<TAB>sha<TAB>subject<TAB>author на stdin
+  notify-pr     --web-base <url> --ticket-ids <ids>  слияние PR: id задач берутся из аргумента,
+                                                    PR_NUMBER, PR_TITLE, PR_AUTHOR, PR_HEAD_REF,
+                                                    PR_BASE_REF, PR_MERGE_SHA в env
 
 Конфиг: env WEEEK_CONF, иначе weeek.conf рядом со скриптом.
 Провайдерские шаблоны ссылок branchPath и prPath задают только адаптеры
@@ -48,7 +49,7 @@ esac
 [ -f "$conf_file" ] || fail "не найден конфиг ${conf_file} (путь задаётся WEEEK_CONF)"
 # shellcheck source=./weeek.conf
 source "$conf_file"
-for key in apiBase ticketPattern commentsPage apiMaxTime; do
+for key in apiBase commentsPage apiMaxTime; do
   [ -n "${!key:-}" ] || fail "не задан ключ ${key} в ${conf_file}"
 done
 
@@ -71,10 +72,6 @@ request() { # method path [json-body] -> HTTP-код, тело в $body_file
 
 json_string() { # stdin -> содержимое JSON-строки без кавычек
   sed -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e ':a' -e 'N' -e '$!ba' -e 's/\n/\\n/g'
-}
-
-ticket_ids() { # stdin текст -> id задачи по строке; пустой вход даёт пустой вывод, не ошибку
-  { grep -oE "$ticketPattern" || true; } | tr -d '[]' | sort -un
 }
 
 check_task() { # id -> ok|deleted|missing|error:<код>
@@ -122,10 +119,12 @@ post_comment() { # task_id markdown
 
 arg_web_base=''
 arg_branch=''
+arg_task_ids=''
 
-parse_args() { # --web-base URL [--branch NAME]
+parse_args() { # --web-base URL [--branch NAME] [--ticket-ids IDS]
   arg_web_base=''
   arg_branch=''
+  arg_task_ids=''
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --web-base)
@@ -136,6 +135,11 @@ parse_args() { # --web-base URL [--branch NAME]
       --branch)
         [ "$#" -ge 2 ] || fail 'нет значения у --branch'
         arg_branch="$2"
+        shift 2
+        ;;
+      --ticket-ids)
+        [ "$#" -ge 2 ] || fail 'нет значения у --ticket-ids'
+        arg_task_ids="$2"
         shift 2
         ;;
       *) fail "неизвестный аргумент: $1" ;;
@@ -188,8 +192,8 @@ render_merge() { # web_base -> markdown в stdout
   printf '%s\n' "$text"
 }
 
-notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV sha<TAB>subject<TAB>author
-  local web_base branch id sha subject author ids state markdown text
+notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>subject<TAB>author
+  local web_base branch id sha subject author state markdown text
   parse_args "$@"
   web_base="$arg_web_base"
   branch="$arg_branch"
@@ -197,19 +201,16 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV sha<TAB>subject<TA
   local -A by_task=()   # id -> строки "sha<TAB>subject<TAB>author"
   local -A seen=()      # id/sha -> 1, дедуп внутри пуша
   local total=0
-  while IFS=$'\t' read -r sha subject author; do
-    [ -n "${sha:-}" ] || continue
+  while IFS=$'\t' read -r id sha subject author; do
+    [ -n "${id:-}" ] || continue
     total=$((total + 1))
-    ids="$(printf '%s' "${subject:-}" | ticket_ids)"
-    for id in $ids; do
-      [ "${seen["$id/$sha"]:-}" = 1 ] && continue
-      seen["$id/$sha"]=1
-      # перевод строки — вне подстановки: $(...) срезает завершающий \n и записи батча слипаются
-      by_task[$id]+="$(printf '%s\t%s\t%s' "$sha" "${subject:-}" "${author:-}")"$'\n'
-    done
+    [ "${seen["$id/$sha"]:-}" = 1 ] && continue
+    seen["$id/$sha"]=1
+    # перевод строки — вне подстановки: $(...) срезает завершающий \n и записи батча слипаются
+    by_task[$id]+="$(printf '%s\t%s\t%s' "$sha" "${subject:-}" "${author:-}")"$'\n'
   done
 
-  log "коммитов на входе: ${total}"
+  log "строк на входе: ${total}"
   if [ "$total" = 0 ] || [ "${#by_task[@]}" = 0 ]; then
     log 'нет коммитов с упоминанием задач — публиковать нечего'
     return 0
@@ -243,7 +244,7 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV sha<TAB>subject<TA
   done
 }
 
-notify_pr() { # --web-base URL ; env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF PR_MERGE_SHA
+notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF PR_MERGE_SHA
   local web_base number title marker ids id state text
   parse_args "$@"
   web_base="$arg_web_base"
@@ -253,9 +254,10 @@ notify_pr() { # --web-base URL ; env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF P
   [ -n "$number" ] || fail 'PR_NUMBER не задан'
   marker="${PR_MERGE_SHA:-#${number}}"
 
-  ids="$(printf '%s' "$title" | ticket_ids)"
+  # id задач резолвит CI-слой и передаёт аргументом; PR_TITLE — только текст сообщения
+  ids="$arg_task_ids"
   if [ -z "$ids" ]; then
-    log 'в заголовке PR нет упоминания задач — публиковать нечего'
+    log 'нет id задач для уведомления о слиянии PR — публиковать нечего'
     return 0
   fi
 

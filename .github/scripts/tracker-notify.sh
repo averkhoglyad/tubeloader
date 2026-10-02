@@ -6,6 +6,9 @@
 #   tracker-notify.sh push   env: BEFORE AFTER BRANCH
 #   tracker-notify.sh pr     env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF PR_MERGE_SHA
 #
+# id задач в сообщениях коммитов и в заголовке PR резолвит CI-слой (scripts/ci);
+# адаптер только передаёт готовые id домену Weeek.
+#
 # Переменные: WEEEK_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
 
 set -euo pipefail
@@ -52,11 +55,18 @@ case "${1:-}" in
       notify_args+=(--branch "$BRANCH")
     fi
     bash "${root}/scripts/ci/commits.sh" "${commits_args[@]}" > "$tsv"
-    printf 'коммитов в диапазоне: %s\n' "$(wc -l < "$tsv" | tr -d ' ')" >&2
+    printf 'строк TSV в диапазоне: %s\n' "$(wc -l < "$tsv" | tr -d ' ')" >&2
     bash "${root}/scripts/weeek/weeek.sh" notify-push "${notify_args[@]}" < "$tsv"
     ;;
   pr)
-    bash "${root}/scripts/weeek/weeek.sh" notify-pr --web-base "$webBase"
+    # id задач — знание CI-слоя: резолвим из заголовка PR тем же шаблоном, что и для коммитов
+    ids="$(printf '%s' "${PR_TITLE:-}" | bash "${root}/scripts/ci/commits.sh" --ids-from-text)"
+    if [ -z "$ids" ]; then
+      printf 'в заголовке PR нет упоминания задач — публиковать нечего\n' >&2
+      exit 0
+    fi
+    ids="$(printf '%s' "$ids" | tr '\n' ' ')"
+    bash "${root}/scripts/weeek/weeek.sh" notify-pr --web-base "$webBase" --ticket-ids "$ids"
     ;;
   *)
     fail 'usage: tracker-notify.sh push|pr'
