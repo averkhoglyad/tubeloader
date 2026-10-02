@@ -4,7 +4,7 @@
 # Доменной логики Weeek и вычисления диапазона коммитов здесь нет.
 #
 #   tracker-notify.sh push   env: BEFORE AFTER BRANCH
-#   tracker-notify.sh pr     env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF PR_MERGE_SHA
+#   tracker-notify.sh pr     env: PR_NUMBER PR_TITLE PR_AUTHOR PR_HEAD_REF PR_BASE_REF
 #
 # id задач в сообщениях коммитов и в заголовке PR резолвит CI-слой (scripts/ci);
 # адаптер только передаёт готовые id домену Weeek.

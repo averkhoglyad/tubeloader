@@ -55,7 +55,13 @@ done
 
 # branchPath и prPath — провайдерские: домен их не подставляет и дефолта не имеет.
 require_provider_key() { # key
-  [ -n "${!1:-}" ] || fail "не задан ${1}: шаблон пути ссылки задаёт провайдерский конфиг (${conf_file}) или env"
+  local value="${!1:-}"
+  [ -n "$value" ] || fail "не задан ${1}: шаблон пути ссылки задаёт провайдерский конфиг (${conf_file}) или env"
+  # без плейсхолдера ссылка молча склеивается битой, поэтому проверяем до запросов к API
+  case "$value" in
+    *__VALUE__*) ;;
+    *) fail "${1}='${value}': нет плейсхолдера __VALUE__, подставить значение некуда (${conf_file})" ;;
+  esac
 }
 
 body_file="$(mktemp)"
@@ -86,6 +92,13 @@ check_task() { # id -> ok|deleted|missing|error:<код>
     400) printf 'missing' ;;
     *) printf 'error:%s' "$code" ;;
   esac
+}
+
+# Сбой транспорта под set -e уронил бы весь батч, а не только эту задачу.
+task_state() { # id -> состояние; 1 — запрос состояния не удался
+  local state
+  state="$(check_task "$1")" || return 1
+  printf '%s' "$state"
 }
 
 has_marker() { # task_id marker -> 0 найдено, 1 нет, 2 ошибка запроса
@@ -207,6 +220,8 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
   parse_args "$@"
   web_base="$arg_web_base"
   branch="$arg_branch"
+  # шаблон пути ветки проверяется до первого запроса к API
+  [ -z "$branch" ] || require_provider_key branchPath
 
   local -A by_task=()   # id -> строки "sha<TAB>subject<TAB>author"
   local -A seen=()      # id/sha -> 1, дедуп внутри пуша
@@ -230,7 +245,12 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
   mapfile -t task_ids < <(printf '%s\n' "${!by_task[@]}" | sort -n)
 
   for id in "${task_ids[@]}"; do
-    state="$(check_task "$id")"
+    rc=0
+    state="$(task_state "$id")" || rc=$?
+    if [ "$rc" != 0 ]; then
+      log "-- задача ${id}: состояние не получено, пропуск"
+      continue
+    fi
     case "$state" in
       ok) ;;
       deleted) log "?? задача ${id} удалена, комментарий всё равно пишется" ;;
@@ -252,7 +272,6 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
     text="**Коммиты**"
     if [ -n "$branch" ]; then
       # путь ветки у хостов разный: шаблон __VALUE__ приходит в branchPath от адаптера
-      require_provider_key branchPath
       text+=" в ветку [${branch}](${web_base}$(host_path "$branchPath" "$branch"))"
     fi
     text+=$'\n\n'"${markdown%$'\n'}"
@@ -284,7 +303,12 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
   text="$(render_merge "$web_base" "$marker")"
 
   for id in $ids; do
-    state="$(check_task "$id")"
+    rc=0
+    state="$(task_state "$id")" || rc=$?
+    if [ "$rc" != 0 ]; then
+      log "-- задача ${id}: состояние не получено, пропуск"
+      continue
+    fi
     case "$state" in
       ok) ;;
       deleted) log "?? задача ${id} удалена, комментарий всё равно пишется" ;;
