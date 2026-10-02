@@ -1,4 +1,4 @@
-name: 'Tracker: коммиты в Weeek'
+name: 'Tracker: commits to Weeek'
 
 on:
   push:
@@ -18,9 +18,12 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Отправить комментарии в Weeek
+      - name: Send comments to Weeek
         env:
           WEEEK_API_TOKEN: ${{ secrets.WEEEK_API_TOKEN }}
+          # for author profile link resolution: anonymous limit is 60 requests/hour on the shared
+          # runner IP, 5000 with a token; the variable name is read by the provider resolver
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           BEFORE: ${{ github.event.before }}
           AFTER: ${{ github.event.after }}
           BRANCH: ${{ github.head_ref || github.ref_name }}

@@ -1,13 +1,14 @@
 #!/usr/bin/env bash
-# Клиент Weeek API: состояние задачи, дедуп комментариев, публикация уведомлений
-# о пуше и о слиянии PR.
+# Weeek API client: ticket state, comment dedup, publishing notifications
+# about a push and about a PR merge.
 #
-# Провайдера CI домен не знает: веб-хост ссылок приходит аргументом --web-base,
-# runtime-данные — stdin и env, глобальные настройки — из weeek.conf рядом
-# со скриптом (путь переопределяется env WEEEK_CONF), провайдерские шаблоны путей
-# ссылок branchPath/prPath — из конфига вызывающего адаптера, у домена дефолта нет.
+# The domain knows no CI provider: the base web host comes in via --web-base, commit and
+# author profile links — ready-made in the TSV, runtime data — stdin and env, global
+# settings — from weeek.conf next to the script (path overridden by the WEEEK_CONF env var),
+# provider path templates branchPath/prPath — from the calling adapter config; the domain
+# has no defaults.
 #
-# Переменные: TRACKER_API_TOKEN (обязательна), DRY_RUN=1, WEEEK_CONF.
+# Variables: TRACKER_API_TOKEN (required), DRY_RUN=1, WEEEK_CONF.
 
 set -euo pipefail
 
@@ -17,25 +18,26 @@ script_dir="$(dirname -- "${BASH_SOURCE[0]}")"
 conf_file="${WEEEK_CONF:-${script_dir}/weeek.conf}"
 
 fail() { printf '%s\n' "$*" >&2; exit 1; }
-# Диагностика идёт в stderr: stdout отдан данным контракта (markdown, состояние задачи).
+# Diagnostics go to stderr: stdout is reserved for the contract data (markdown, ticket state).
 log() { printf '%s\n' "$*" >&2; }
 
 usage() {
   cat <<'EOF'
-usage: weeek.sh <команда> [аргументы]
+usage: weeek.sh <command> [arguments]
 
-  task-status   <id>                                состояние: ok|deleted|missing|error:<код>
-  comment-has   <id> <marker>                       код 0 — маркер есть, 1 — нет, 2 — ошибка
-  comment-post  <id> --body-file <path>             добавить комментарий
-  notify-push   --web-base <url> [--branch <name>]  коммиты пуша: TSV id<TAB>sha<TAB>subject<TAB>author<TAB>commit-url на stdin
-  notify-pr     --web-base <url> --ticket-ids <ids>  слияние PR: id задач берутся из аргумента,
+  task-status   <id>                                state: ok|deleted|missing|error:<code>
+  comment-has   <id> <marker>                       exit 0 — marker present, 1 — absent, 2 — request error
+  comment-post  <id> --body-file <path>             append a comment
+  notify-push   --web-base <url> [--branch <name>]  push commits: TSV
+                                                    id<TAB>sha<TAB>subject<TAB>author<TAB>commit-url<TAB>author-url on stdin
+  notify-pr     --web-base <url> --ticket-ids <ids>  PR merge: ticket ids come from the argument,
                                                     PR_NUMBER, PR_TITLE, PR_AUTHOR, PR_HEAD_REF,
-                                                    PR_BASE_REF в env; маркер дедупа — pr:<номер PR>
+                                                    PR_BASE_REF from env; dedup marker — pr:<PR number>
 
-Конфиг: env WEEEK_CONF, иначе weeek.conf рядом со скриптом.
-Провайдерские шаблоны ссылок branchPath и prPath задают только адаптеры
-(WEEEK_CONF указывает на провайдерский файл).
-Переменные: TRACKER_API_TOKEN (обязательна), DRY_RUN=1 — печать без записи.
+Config: WEEEK_CONF env var, otherwise weeek.conf next to the script.
+Provider link templates branchPath and prPath are set by adapters only
+(WEEEK_CONF points at the provider file).
+Variables: TRACKER_API_TOKEN (required), DRY_RUN=1 — print without writing.
 EOF
 }
 usage_error() { usage >&2; exit 2; }
@@ -45,29 +47,29 @@ case "${1:-}" in
   -h | --help | help) usage; exit 0 ;;
 esac
 
-[ -n "$TOKEN" ] || fail 'TRACKER_API_TOKEN не задан'
-[ -f "$conf_file" ] || fail "не найден конфиг ${conf_file} (путь задаётся WEEEK_CONF)"
+[ -n "$TOKEN" ] || fail 'TRACKER_API_TOKEN is not set'
+[ -f "$conf_file" ] || fail "config ${conf_file} not found (path is set by WEEEK_CONF)"
 # shellcheck source=./weeek.conf
 source "$conf_file"
 for key in apiBase commentsPage apiMaxTime; do
-  [ -n "${!key:-}" ] || fail "не задан ключ ${key} в ${conf_file}"
+  [ -n "${!key:-}" ] || fail "key ${key} is not set in ${conf_file}"
 done
 
-# branchPath и prPath — провайдерские: домен их не подставляет и дефолта не имеет.
+# branchPath and prPath are provider-side: the domain does not substitute them and has no default.
 require_provider_key() { # key
   local value="${!1:-}"
-  [ -n "$value" ] || fail "не задан ${1}: шаблон пути ссылки задаёт провайдерский конфиг (${conf_file}) или env"
-  # без плейсхолдера ссылка молча склеивается битой, поэтому проверяем до запросов к API
+  [ -n "$value" ] || fail "${1} is not set: the provider config (${conf_file}) or env sets the link path template"
+  # without the placeholder the link is silently glued together broken, so check before API requests
   case "$value" in
     *__VALUE__*) ;;
-    *) fail "${1}='${value}': нет плейсхолдера __VALUE__, подставить значение некуда (${conf_file})" ;;
+    *) fail "${1}='${value}': no __VALUE__ placeholder, nowhere to substitute the value (${conf_file})" ;;
   esac
 }
 
 body_file="$(mktemp)"
 trap 'rm -f "$body_file"' EXIT
 
-request() { # method path [json-body] -> HTTP-код, тело в $body_file
+request() { # method path [json-body] -> HTTP code, body in $body_file
   local method="$1" path="$2" data="${3:-}"
   local args=(-sS -o "$body_file" -w '%{http_code}' -X "$method"
     -H "Authorization: Bearer $TOKEN" -H 'Accept: application/json'
@@ -76,13 +78,13 @@ request() { # method path [json-body] -> HTTP-код, тело в $body_file
   curl "${args[@]}" "$apiBase$path"
 }
 
-json_string() { # stdin -> содержимое JSON-строки без кавычек
-  # -z: весь вход экранируется одним потоком; построчные правила с меткой ':a' после s///
-  # пропускали строки, добавленные N, и кавычка в них давала невалидный JSON
+json_string() { # stdin -> JSON string contents without quotes
+  # -z: the whole input is escaped as a single stream; line-wise rules with the ':a' label after
+  # s/// skipped lines appended by N, and a quote in them produced invalid JSON
   sed -z -e 's/\\/\\\\/g' -e 's/"/\\"/g' -e 's/\t/\\t/g' -e 's/\r/\\r/g' -e 's/\n/\\n/g'
 }
 
-check_task() { # id -> ok|deleted|missing|error:<код>
+check_task() { # id -> ok|deleted|missing|error:<code>
   local code
   code="$(request GET "/tm/tasks/$1")" || return 1
   case "$code" in
@@ -94,14 +96,14 @@ check_task() { # id -> ok|deleted|missing|error:<код>
   esac
 }
 
-# Сбой транспорта под set -e уронил бы весь батч, а не только эту задачу.
-task_state() { # id -> состояние; 1 — запрос состояния не удался
+# A transport failure under set -e would take down the whole batch, not just this ticket.
+task_state() { # id -> state; 1 — the state request failed
   local state
   state="$(check_task "$1")" || return 1
   printf '%s' "$state"
 }
 
-has_marker() { # task_id marker -> 0 найдено, 1 нет, 2 ошибка запроса
+has_marker() { # task_id marker -> 0 found, 1 not found, 2 request error
   local task_id="$1" marker="$2" offset=0 code
   while :; do
     code="$(request GET "/tm/tasks/$task_id/comments?limit=$commentsPage&offset=$offset")" || return 2
@@ -109,7 +111,7 @@ has_marker() { # task_id marker -> 0 найдено, 1 нет, 2 ошибка з
       log "!! GET comments ${task_id} -> ${code}"
       return 2
     fi
-    # в теле ответа слэши экранированы как \/ — иначе маркер со слэшем не найдётся
+    # slashes in the response body are escaped as \/ — otherwise a marker with a slash is not found
     if sed 's|\\/|/|g' "$body_file" | grep -qF -- "$marker"; then return 0; fi
     grep -q '"hasMore": *true' "$body_file" || return 1
     offset=$((offset + commentsPage))
@@ -129,7 +131,7 @@ post_comment() { # task_id markdown
     log "!! POST comment ${task_id} -> ${code} $(head -c 300 "$body_file")"
     return 1
   fi
-  log "   комментарий добавлен в задачу ${task_id}"
+  log "   comment added to ticket ${task_id}"
 }
 
 arg_web_base=''
@@ -143,106 +145,114 @@ parse_args() { # --web-base URL [--branch NAME] [--ticket-ids IDS]
   while [ "$#" -gt 0 ]; do
     case "$1" in
       --web-base)
-        [ "$#" -ge 2 ] || fail 'нет значения у --web-base'
+        [ "$#" -ge 2 ] || fail '--web-base has no value'
         arg_web_base="$2"
         shift 2
         ;;
       --branch)
-        [ "$#" -ge 2 ] || fail 'нет значения у --branch'
+        [ "$#" -ge 2 ] || fail '--branch has no value'
         arg_branch="$2"
         shift 2
         ;;
       --ticket-ids)
-        [ "$#" -ge 2 ] || fail 'нет значения у --ticket-ids'
+        [ "$#" -ge 2 ] || fail '--ticket-ids has no value'
         arg_task_ids="$2"
         shift 2
         ;;
-      *) fail "неизвестный аргумент: $1" ;;
+      *) fail "unknown argument: $1" ;;
     esac
   done
-  [ -n "$arg_web_base" ] || fail 'не задан --web-base'
+  [ -n "$arg_web_base" ] || fail '--web-base is not set'
 }
 
-# Markdown блока «Коммиты» для одной задачи. stdout — только markdown,
-# диагностика уходит в stderr; код 1 — новых коммитов нет.
-render_commits() { # task_id web_base ; stdin: строки "sha<TAB>subject<TAB>author" ; 1 — новых нет, 2 — ошибка запроса
+# Markdown for the "Commits" block of a single ticket. stdout is markdown only,
+# diagnostics go to stderr; exit 1 — no new commits.
+render_commits() { # task_id web_base ; stdin: "sha<TAB>subject<TAB>author<TAB>commit_url<TAB>author_url" ; 1 — none new, 2 — request error
   local task_id="$1" web_base="$2"
-  local sha subject author sha_short line markdown='' rc
-  while IFS=$'\t' read -r sha subject author; do
+  local sha subject author commit_url author_url sha_short line markdown='' rc
+  while IFS=$'\t' read -r sha subject author commit_url author_url; do
     [ -n "${sha:-}" ] || continue
-    # маркер дедупа — полный sha: он попадает в текст ссылки, других полных sha в комментарии нет
+    # dedup marker — the full sha: it lands in the link text, no other full sha is present in the comment
     rc=0
     has_marker "$task_id" "$sha" || rc=$?
     if [ "$rc" = 0 ]; then
-      log "   ${sha:0:7} уже отмечен в задаче ${task_id} — пропуск"
+      log "   ${sha:0:7} already marked in ticket ${task_id} — skipped"
       continue
     fi
-    # 2 — запрос дедупа не удался: публиковать нельзя, иначе на каждый сбой будет дубль
+    # 2 — the dedup request failed: publishing is not allowed, otherwise every failure produces a duplicate
     if [ "$rc" = 2 ]; then
       return 2
     fi
     sha_short="${sha:0:7}"
-    # бэктики внутрь ссылки нельзя: Weeek выносит их наружу и ссылка ломается
-    line="- [${sha_short}](${web_base}/commit/${sha}) ${subject:-}"
-    [ -n "${author:-}" ] && line+=" · автор ${author}"
+    # backticks must not go inside the link: Weeek moves them outside and the link breaks
+    if [ -n "${commit_url:-}" ]; then
+      line="- [${sha_short}](${commit_url}) ${subject:-}"
+    else
+      line="- ${sha_short} ${subject:-}"
+    fi
+    if [ -n "${author:-}" ]; then
+      if [ -n "${author_url:-}" ]; then
+        line+=" · author [${author}](${author_url})"
+      else
+        line+=" · author ${author}"
+      fi
+    fi
     markdown+="${line}"$'\n'
   done
   [ -n "$markdown" ] || return 1
   printf '%s' "$markdown"
 }
 
-# Путь хоста из шаблона: плейсхолдер __VALUE__ меняется на значение.
+# Host path from a template: the __VALUE__ placeholder is replaced by the value.
 host_path() { # template value
   printf '%s' "${1//__VALUE__/$2}"
 }
 
-# Markdown блока «Слияние PR». Ссылка на профиль автора не строится:
-# её форма зависит от хоста, а имя автора — общее для всех хостов.
-render_merge() { # web_base marker -> markdown в stdout
+# Markdown for the "PR merge" block. The author profile link is not built here:
+# its shape depends on the host, while the author name is common to all hosts.
+render_merge() { # web_base marker -> markdown on stdout
   local web_base="$1" marker="$2" number="${PR_NUMBER:-}" title="${PR_TITLE:-}"
   local head_ref="${PR_HEAD_REF:-}" base_ref="${PR_BASE_REF:-main}" origin='' text
   local branch_url
   branch_url="$(host_path "$branchPath" '')"
 
-  text="**Слияние PR**"$'\n\n'
+  text="**PR merge**"$'\n\n'
   text+="[#${number}](${web_base}$(host_path "$prPath" "$number")) ${title:-}"
   [ -n "$head_ref" ] && origin="[${head_ref}](${web_base}$(host_path "$branchPath" "$head_ref")) -> "
   origin+="[${base_ref}](${web_base}${branch_url}${base_ref})"
   text+=$'\n'"${origin}"
-  [ -n "${PR_AUTHOR:-}" ] && text+=" · автор ${PR_AUTHOR}"
-  # маркер дедупа обязан быть в теле: комментарии append-only, has_marker ищет только по телу
+  [ -n "${PR_AUTHOR:-}" ] && text+=" · author ${PR_AUTHOR}"
+  # the dedup marker must be in the body: comments are append-only, has_marker searches the body only
   text+=$'\n'"${marker}"
   printf '%s\n' "$text"
 }
 
-notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>subject<TAB>author
-  local web_base branch id sha subject author state markdown text rc
+notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>subject<TAB>author<TAB>commit-url<TAB>author-url
+  local web_base branch id sha subject author commit_url author_url state markdown text rc
   parse_args "$@"
   web_base="$arg_web_base"
   branch="$arg_branch"
-  # команда диапазона не читает id из аргумента: молча принятый флаг дал бы впечатление,
-  # что фильтр применён
-  [ -z "$arg_task_ids" ] || fail 'notify-push не принимает --ticket-ids'
-  # шаблон пути ветки проверяется до первого запроса к API
+  # the range command does not read ids from an argument: a silently accepted flag would give
+  # the impression that the filter was applied
+  [ -z "$arg_task_ids" ] || fail 'notify-push does not accept --ticket-ids'
+  # the branch path template is checked before the first API request
   [ -z "$branch" ] || require_provider_key branchPath
 
-  local -A by_task=()   # id -> строки "sha<TAB>subject<TAB>author"
-  local -A seen=()      # id/sha -> 1, дедуп внутри пуша
+  local -A by_task=()   # id -> lines "sha<TAB>subject<TAB>author<TAB>commit-url<TAB>author-url"
+  local -A seen=()      # id/sha -> 1, dedup within the push
   local total=0
-  while IFS=$'\t' read -r id sha subject author commit_url; do
+  while IFS=$'\t' read -r id sha subject author commit_url author_url; do
     [ -n "${id:-}" ] || continue
     total=$((total + 1))
     [ "${seen["$id/$sha"]:-}" = 1 ] && continue
     seen["$id/$sha"]=1
-    # commit_url строится в CI-слое; пока не реализован — колонка пустая
-    : "$commit_url"
-    # перевод строки — вне подстановки: $(...) срезает завершающий \n и записи батча слипаются
-    by_task[$id]+="$(printf '%s\t%s\t%s' "$sha" "${subject:-}" "${author:-}")"$'\n'
+    # links are built by the CI layer and passed in ready-made: the domain knows nothing about hosts
+    by_task[$id]+="$(printf '%s\t%s\t%s\t%s\t%s' "$sha" "${subject:-}" "${author:-}" "${commit_url:-}" "${author_url:-}")"$'\n'
   done
 
-  log "строк на входе: ${total}"
+  log "input lines: ${total}"
   if [ "$total" = 0 ] || [ "${#by_task[@]}" = 0 ]; then
-    log 'нет коммитов с упоминанием задач — публиковать нечего'
+    log 'no commits mentioning tickets — nothing to publish'
     return 0
   fi
 
@@ -253,35 +263,35 @@ notify_push() { # --web-base URL [--branch NAME] ; stdin: TSV id<TAB>sha<TAB>sub
     rc=0
     state="$(task_state "$id")" || rc=$?
     if [ "$rc" != 0 ]; then
-      log "-- задача ${id}: состояние не получено, пропуск"
+      log "-- ticket ${id}: state not obtained, skipped"
       continue
     fi
     case "$state" in
       ok) ;;
-      deleted) log "?? задача ${id} удалена, комментарий всё равно пишется" ;;
-      missing) log "-- задача ${id} не найдена, пропуск"; continue ;;
-      *) log "!! задача ${id} -> ${state}"; continue ;;
+      deleted) log "?? ticket ${id} is deleted, the comment is written anyway" ;;
+      missing) log "-- ticket ${id} not found, skipped"; continue ;;
+      *) log "!! ticket ${id} -> ${state}"; continue ;;
     esac
 
     rc=0
     markdown="$(render_commits "$id" "$web_base" <<<"${by_task[$id]%$'\n'}")" || rc=$?
     if [ "$rc" = 2 ]; then
-      log "   задача ${id}: проверка маркеров не удалась — пропуск"
+      log "   ticket ${id}: marker check failed — skipped"
       continue
     fi
     if [ "$rc" != 0 ]; then
-      log "   в задаче ${id} новых коммитов нет"
+      log "   ticket ${id} has no new commits"
       continue
     fi
 
-    text="**Коммиты**"
+    text="**Commits**"
     if [ -n "$branch" ]; then
-      # путь ветки у хостов разный: шаблон __VALUE__ приходит в branchPath от адаптера
-      text+=" в ветку [${branch}](${web_base}$(host_path "$branchPath" "$branch"))"
+      # the branch path differs between hosts: the __VALUE__ template comes in branchPath from the adapter
+      text+=" to branch [${branch}](${web_base}$(host_path "$branchPath" "$branch"))"
     fi
     text+=$'\n\n'"${markdown%$'\n'}"
-    # сбой одной задачи не обрывает батч: остальные задачи должны получить уведомление
-    post_comment "$id" "$text" || log "!! задача ${id} не отправлена"
+    # one ticket failing does not break the batch: the remaining tickets must get the notification
+    post_comment "$id" "$text" || log "!! ticket ${id} not sent"
   done
 }
 
@@ -291,18 +301,18 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
   web_base="$arg_web_base"
   number="${PR_NUMBER:-}"
   title="${PR_TITLE:-}"
-  # команда слияния знает ref-ы из env: молча принятый --branch дал бы впечатление,
-  # что переданное значение использовано
-  [ -z "$arg_branch" ] || fail 'notify-pr не принимает --branch'
+  # the merge command knows refs from env: a silently accepted --branch would give the impression
+  # that the passed value was used
+  [ -z "$arg_branch" ] || fail 'notify-pr does not accept --branch'
 
-  [ -n "$number" ] || fail 'PR_NUMBER не задан'
-  # маркер — номер PR: sha мержа встречается в URL push-комментария и подавлял merge-комментарий
+  [ -n "$number" ] || fail 'PR_NUMBER is not set'
+  # marker — the PR number: the merge sha appears in the push comment URL and suppressed the merge comment
   marker="pr:${number}"
 
-  # id задач резолвит CI-слой и передаёт аргументом; PR_TITLE — только текст сообщения
+  # ticket ids are resolved by the CI layer and passed as an argument; PR_TITLE is the message text only
   ids="$arg_task_ids"
   if [ -z "$ids" ]; then
-    log 'нет id задач для уведомления о слиянии PR — публиковать нечего'
+    log 'no ticket ids for the PR merge notification — nothing to publish'
     return 0
   fi
 
@@ -314,27 +324,27 @@ notify_pr() { # --web-base URL --ticket-ids IDS ; env: PR_NUMBER PR_TITLE PR_AUT
     rc=0
     state="$(task_state "$id")" || rc=$?
     if [ "$rc" != 0 ]; then
-      log "-- задача ${id}: состояние не получено, пропуск"
+      log "-- ticket ${id}: state not obtained, skipped"
       continue
     fi
     case "$state" in
       ok) ;;
-      deleted) log "?? задача ${id} удалена, комментарий всё равно пишется" ;;
-      missing) log "-- задача ${id} не найдена, пропуск"; continue ;;
-      *) log "!! задача ${id} -> ${state}"; continue ;;
+      deleted) log "?? ticket ${id} is deleted, the comment is written anyway" ;;
+      missing) log "-- ticket ${id} not found, skipped"; continue ;;
+      *) log "!! ticket ${id} -> ${state}"; continue ;;
     esac
     rc=0
     has_marker "$id" "$marker" || rc=$?
     if [ "$rc" = 0 ]; then
-      log "   PR #${number} уже отмечен в задаче ${id} — пропуск"
+      log "   PR #${number} already marked in ticket ${id} — skipped"
       continue
     fi
-    # 2 — запрос дедупа не удался: публиковать нельзя, иначе на каждый сбой будет дубль
+    # 2 — the dedup request failed: publishing is not allowed, otherwise every failure produces a duplicate
     if [ "$rc" = 2 ]; then
-      log "!! задача ${id}: проверка маркеров не удалась — пропуск"
+      log "!! ticket ${id}: marker check failed — skipped"
       continue
     fi
-    post_comment "$id" "$text" || log "!! задача ${id} не отправлена"
+    post_comment "$id" "$text" || log "!! ticket ${id} not sent"
   done
 }
 
@@ -354,7 +364,7 @@ case "${1:-}" in
     shift
     [ "$#" = 3 ] || usage_error
     [ "$2" = '--body-file' ] || usage_error
-    [ -f "$3" ] || fail "не найден файл с телом комментария: $3"
+    [ -f "$3" ] || fail "comment body file not found: $3"
     post_comment "$1" "$(cat -- "$3")"
     ;;
   notify-push)

@@ -1,4 +1,4 @@
-name: 'Tracker: слияние PR в Weeek'
+name: 'Tracker: PR merge to Weeek'
 
 on:
   pull_request:
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/checkout@v5
 
-      - name: Отправить комментарий в Weeek
+      - name: Send a comment to Weeek
         env:
           WEEEK_API_TOKEN: ${{ secrets.WEEEK_API_TOKEN }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
